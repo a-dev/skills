@@ -1,55 +1,24 @@
 ---
 name: css-modules
-description: Portable typed-CSS-Modules convention pack, project-agnostic. Use when styling React components with CSS Modules in a project that has no CSS convention skill of its own — setting up typed modules, naming classes, adding variant/size props, boolean state via data-*, design tokens, shared style modules, cascade layers.
-disable-model-invocation: true
+description: Typed CSS Modules conventions for styling React components. Use when creating or editing *.module.css files, writing className/style props, adding variant/state props, or picking color/theme values. A project's own CSS convention skill wins; if the #styles plumbing is missing, suggest /css-modules-setup first.
 ---
 
-# Typed CSS Modules — universal convention pack
+# Typed CSS Modules — conventions
 
 A system that makes CSS Modules as convenient as utility-first CSS while staying easier to read and debug: real class names in DevTools, component state visible as `data-*` attributes in the DOM, and class access that fails at compile time instead of producing `undefined` at runtime.
 
-This pack is self-contained and project-agnostic. Recipes assume **Vite + React**; porting notes are at the end. When adopting it in a project, remove the `disable-model-invocation` flag (or write a project overlay skill) so it triggers automatically.
-
-## Setup (Vite)
-
-```ts
-// vite.config.ts
-import { patchCssModules } from "vite-css-modules";
-
-export default {
-  css: {
-    devSourcemap: true,
-    modules: { localsConvention: "camelCaseOnly" },
-  },
-  plugins: [patchCssModules({ generateSourceTypes: true, declarationMap: true })],
-};
-```
-
-- Add `*.module.css.d.ts` to `.gitignore` — the typings are generated, never hand-authored.
-- Add a script: `"css:dts": "vite-css-modules 'src/**/*.module.css'"`. Typings regenerate automatically while the dev server runs; run the script after batch edits, on a fresh clone, and in CI.
-- **CI must run `css:dts` before `tsc --noEmit`** — the type layer only exists where it is generated.
+This skill is the per-edit rulebook. It assumes the project plumbing is already in place: generated `*.module.css.d.ts` typings, the `cx`/`cssVars` helpers, two-tier tokens, a declared `@layer` order, and shared style modules behind the `#styles` alias. If any of that is missing, don't improvise it inline — suggest the user run `/css-modules-setup` (its audit phase also detects partial or drifted setups).
 
 ## The two helpers
 
-The whole runtime surface of the system is two tiny functions, re-exported from the shared-styles entry point (below):
+The whole runtime surface is two tiny functions plus the shared style modules, all imported from one entry point:
 
 ```ts
-// shared/styles/lib/cx.ts — pin the type locally so the underlying lib is swappable
-import { cx as classix } from "classix";
-
-export type ClassValue = string | false | null | undefined;
-export const cx = (...args: ClassValue[]): string => classix(...args);
+import { cx, cssVars, layout, typography, utils } from "#styles";
 ```
 
-```ts
-// shared/styles/lib/css-vars.ts — the only sanctioned inline style
-import type { CSSProperties } from "react";
-
-type CssVars = Record<`--${string}`, string | number>;
-export function cssVars(vars: CssVars): CSSProperties {
-  return vars as CSSProperties;
-}
-```
+- `cx(...args)` joins class strings, skipping falsy values. Falsy entries exist for **optional passthrough only** — a `className` prop that may be `undefined`, an optional enum lookup like `!!size && SIZE_CLASS[size]` — never for boolean state (rule 5).
+- `cssVars({ "--_x": … })` is the only sanctioned inline style (rule 6). It rejects non-`--*` keys at the type level.
 
 ## Rules
 
@@ -59,11 +28,11 @@ The module file is the component's style namespace. When one file styles two unr
 
 ### 2. kebab-case in CSS, camelCase in TSX — never computed keys
 
-`localsConvention: "camelCaseOnly"` means `.button-icon` is consumed as `styles.buttonIcon`; `styles["button-icon"]` is a TS error instead of silent `undefined`. Never compute class strings: ``styles[`size-${size}`]`` is `undefined` under `camelCaseOnly`.
+`localsConvention: "camelCaseOnly"` means `.button-icon` is consumed as `styles.buttonIcon`; `styles["button-icon"]` is a TS error instead of silent `undefined`. Never compute class strings: the generated typings reject ``styles[`size-${size}`]``, and it would break at runtime anyway — `camelCaseOnly` removes the kebab-case keys it tries to look up. Use a typed lookup (rule 4).
 
 ### 3. Class names: role-based, short, no component-name prefix
 
-- `root` (or the component's own role, e.g. `button`) for the outermost element.
+- `root` for the outermost element — always `root`, not the component's name or role: one uniform, greppable outer class across every component.
 - Role names for children: `icon`, `label`, `header`, `item`, `meta`, `action`.
 - Do not repeat the component name: `button-icon` ❌, `icon` ✓ — the module file already namespaces it.
 - No BEM. No bare modifier classes (`primary`, `--small`). Variant values use `.variant-x` / `.size-x` via a typed lookup (rule 4); boolean state uses `data-*` (rule 5).
@@ -83,23 +52,27 @@ const VARIANT_CLASS = {
 
 `satisfies Record<Variant, string>` is an exhaustiveness check: extend the union and every lookup errors until updated. The map doubles as the component's variant API, readable at a glance and greppable from both sides.
 
-### 5. Boolean state → `data-*` presence · accessibility state → `aria-*`
+### 5. Boolean state → `data-*` presence · accessibility state → `aria-*` values
 
 ```tsx
 <button data-loading={loading || undefined} aria-busy={loading || undefined} />
+<button aria-pressed={isPressed} />
 ```
 
 ```css
 .root[data-loading] {
   cursor: progress;
 }
+.root[aria-pressed="true"] {
+  background: var(--color-accent-bg);
+}
 ```
 
-- `|| undefined` strips the attribute when false; `data-loading="false"` would still match `[data-loading]` and lie.
-- Use presence selectors (`[data-loading]`), not string compares (`[data-loading="true"]`).
-- Style `aria-*` state (`[aria-pressed]`, `[aria-expanded]`) directly — don't mirror it into `data-*`.
+- **`data-*`: strip false, match presence.** `|| undefined` removes the attribute; `data-loading="false"` would still match `[data-loading]` and lie. Use presence selectors (`[data-loading]`), not string compares (`[data-loading="true"]`).
+- **`aria-*`: keep meaningful false, match values.** React renders aria booleans as strings, so `aria-pressed={isPressed}` correctly yields `aria-pressed="false"` — a toggle that drops the attribute stops announcing as a toggle. That same `"false"` is why presence selectors are wrong here: `[aria-pressed]` matches the *unpressed* state. Compare values (`[aria-pressed="true"]`), and strip with `|| undefined` only where absence means the same thing (`aria-busy`), never where false is semantic (`aria-pressed`, `aria-expanded`, `aria-selected`).
+- Style `aria-*` state directly — don't mirror it into `data-*`.
 - If a headless-UI library already sets state attributes (`data-disabled`, `data-pending`, …), read those; don't duplicate.
-- **No boolean state through `cx` conditionals**: `cx(styles.root, isLoading && styles.loading)` is a modifier class in disguise with the silent-`undefined` failure mode. Falsy entries in `cx` exist for _optional passthrough only_ — a `className` prop that may be `undefined`, an optional enum lookup like `!!size && SIZE_CLASS[size]`.
+- **No boolean state through `cx` conditionals**: `cx(styles.root, isLoading && styles.loading)` typechecks fine — the problem isn't types, it's that state disappears into a hashed class: nothing in the DOM says "loading", and no other selector can target the state. `data-loading` puts the state on the element. Falsy entries in `cx` exist for _optional passthrough only_ — a `className` prop that may be `undefined`, an optional enum lookup like `!!size && SIZE_CLASS[size]`.
 
 ### 6. Inline `style` only for custom properties, via `cssVars()`
 
@@ -117,53 +90,32 @@ Inline visual properties (`style={{ width: … }}`) bypass the cascade entirely 
 
 ### 7. Every styled element gets its own class
 
-No descendant element selectors (`.card h2`, `.tags li`). Sole exception: styling injected pre-rendered HTML (Markdown output) that cannot carry classes.
+No descendant element selectors (`.card h2`, `.tags li`). Sole exception: injected HTML your components don't author — Markdown render output, WYSIWYG/rich-text content, CMS bodies — whose markup cannot carry classes.
 
-### 8. Tokens in two tiers; components consume the semantic tier only
+### 8. Components consume the semantic token tier only
 
-```
-shared/styles/vars/
-  palette.css   primitive: closed color ramps (--color-gray-100 … --color-blue-700)
-  colors.css    semantic:  --color-text-primary, --color-panel-bg, …
-  fonts.css     semantic:  --fs-*, --fw-*, --lh-*
-  shape.css     semantic:  --rounded-*
-```
+Tokens come in two tiers under the styles root's `vars/` — primitive palette ramps (`--color-gray-100` … `--color-blue-700`) and semantic tokens (`--color-text-primary`, `--color-panel-bg`, `--fs-*`, `--fw-*`, `--lh-*`, `--rounded-*`).
 
 - Palette tokens and raw color literals never appear in component modules — only semantic tokens.
 - One-off tinting goes through `color-mix()` against a semantic token: `color-mix(in oklch, var(--color-panel-bg) 92%, transparent)`.
 - Promote a recipe to a new semantic token when it appears in 2+ places or should differ between themes.
-- Pick one size-scale naming and enforce it (e.g. `xxs / xs / s / m / l / xl / xxl` — never mixed with `sm / md / lg`).
+- Spacing is free: `padding` / `margin` / `gap` take raw values — the system deliberately has no spacing token tier.
+- The size scale names *steps*, not lengths. It lives mostly in UI components — `size` prop variants (rule 4) — plus sized tokens (`--rounded-*`, `--fs-*`) where the developer needs them. Follow the project's naming exactly (e.g. `xxs / xs / s / m / l / xl / xxl`) — never mix in a second scale (`sm / md / lg`).
 
-### 9. Cascade layers: shared styles are the floor, component modules the ceiling
+### 9. Layers: shared styles are the floor, component modules the ceiling
 
-Declare the order once in a global stylesheet:
+The order is declared once in the global stylesheet: `@layer reset, base, layout, typography, ui, utils;`.
 
-```css
-@layer reset, base, layout, typography, utils, ui;
-```
-
-- Reset, global base, shared style modules, and reusable UI primitives each declare their layer (`@layer ui { … }`).
-- Feature/page component modules stay **unlayered** — unlayered styles beat every layer, so app code can always override shared primitives without specificity hacks.
+- Shared style modules and reusable UI primitives declare their layer (`@layer ui { … }`).
+- `utils` sits **after** `ui` because later layers win: utilities are call-site escape hatches, and `utils.visuallyHidden` on a Button must beat the Button's own `position` and size rules — an escape hatch that loses is no escape hatch.
+- Feature/page component modules stay **unlayered** — unlayered styles beat every layer, so app code can always override shared primitives and utilities without specificity hacks.
 - Token files are unlayered plain `:root` custom properties, not rules.
 
-### 10. Shared style modules behind one alias
+### 10. Shared style modules (`#styles`) are a public API
 
-`layout.module.css` (structural grammar: `page`, `container`, `section`), `typography.module.css` (`h1`…`h4`, `body`, `caption`, `mono`), `utils.module.css` (escape hatches: `visually-hidden`, truncation, `rounded-*`). Re-export everything from a single entry point behind an import alias (Vite `resolve.alias` or the `package.json` `imports` field):
+`layout.module.css` (structural grammar: `page`, `container`, `section`), `typography.module.css` (`h1`…`h4`, `body`, `caption`, `mono`), `utils.module.css` (escape hatches: `visually-hidden`, truncation, `rounded-*`) — all re-exported from the `#styles` entry point.
 
-```ts
-// shared/styles/index.ts
-export { cx, type ClassValue } from "./lib/cx";
-export { cssVars } from "./lib/css-vars";
-export { default as layout } from "./layout.module.css";
-export { default as typography } from "./typography.module.css";
-export { default as utils } from "./utils.module.css";
-```
-
-```ts
-import { cx, layout, typography, utils } from "#styles";
-```
-
-Class names here are a public API — descriptive kebab-case that survives grep. Don't admit anything theme-aware (that's a token) or component-shaped (that's a UI primitive), and wait for the second consumer before adding a class.
+Class names here are a public API — descriptive kebab-case that survives grep. Don't admit anything theme-aware (that's a token) or component-shaped (that's a UI primitive), and wait for the second consumer before adding a class — the baseline set seeded by `/css-modules-setup` is the one blessed exception.
 
 ### 11. Composition: two equal mechanisms — pick one and be consistent
 
@@ -182,7 +134,7 @@ Class names here are a public API — descriptive kebab-case that survives grep.
 }
 ```
 
-Markup composition keeps decisions at the call site; `composes` removes markup churn when the same combination repeats. Both are legitimate defaults — choose per team taste, then apply it consistently.
+Markup composition keeps decisions at the call site; `composes` removes markup churn when the same combination repeats. Both are legitimate defaults — follow whichever the codebase already uses; if neither is established yet, pick one and apply it consistently.
 
 ### 12. Private custom properties: `--_` prefix
 
@@ -203,7 +155,7 @@ Markup composition keeps decisions at the call site; `composes` removes markup c
   className={cx(
     styles.root,
     isLoading && styles.loading, // boolean state in cx — use data-loading
-    styles[`size-${size}`],      // computed key — undefined under camelCaseOnly
+    styles[`size-${size}`],      // computed key — typings reject it; use a typed lookup
   )}
   data-variant={variant}         // closed enum on data-* — loses the typed lookup
 />
@@ -218,13 +170,7 @@ background: color-mix(in oklch, var(--color-gray-100) 92%, transparent);
 background: #f5f7fa;
 ```
 
-## Recommended companions (separable)
+## Theming and logical properties
 
-- **Theming via `light-dark()`**: resolved theme as `data-theme="light|dark"` on `<html>` mapped to `color-scheme`; every semantic color token carries both values inline: `--color-text-primary: light-dark(var(--color-gray-900), var(--color-gray-100));`. Component modules never contain `[data-theme]` selectors — needing one means a semantic token is missing.
-- **Logical properties**: `padding-inline`, `margin-block`, `inset-inline-*` over physical equivalents; keep `width`/`height` physical.
-
-## Porting notes
-
-- **Next.js**: CSS Modules are built in; generate typings with `typed-css-modules` (watch mode in dev); set camelCase via css-loader's `exportLocalsConvention`.
-- **Other bundlers**: any css-loader/postcss-modules pipeline with `exportLocalsConvention: "camelCaseOnly"` gives the same naming contract.
-- Everything except the typings generation (rules 1–3, 5, 7–12) is plain CSS + JSX and ports to any stack, including Vue/Svelte/Astro with modules support.
+- Semantic color tokens resolve light and dark via `light-dark()` — component modules never contain `[data-theme]` selectors. Needing one means a semantic token is missing; add the token instead.
+- Prefer logical properties: `padding-inline`, `margin-block`, `inset-inline-*` over physical equivalents; keep `width`/`height` physical.
