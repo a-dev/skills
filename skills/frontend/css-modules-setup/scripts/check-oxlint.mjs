@@ -2,14 +2,21 @@
 
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { oxlintRuleIds } from "../harness/oxlint-plugin.mjs";
-import { validateProfile } from "./audit.mjs";
+import {
+  exitCodeForFindings,
+  finalizeFindings,
+  formatFindingsReport,
+  readProfile,
+  resolveInside,
+  selectSeverity,
+} from "./lib.mjs";
 
 const CATEGORY_NAMES = [
   "correctness",
@@ -20,55 +27,6 @@ const CATEGORY_NAMES = [
   "style",
   "suspicious",
 ];
-
-function resolveInside(root, relativePath) {
-  const resolved = path.resolve(root, relativePath);
-  const relative = path.relative(root, resolved);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`Oxlint path escapes the project root: ${relativePath}`);
-  }
-  return resolved;
-}
-
-async function readProfile(root, profilePath) {
-  const profile = JSON.parse(await readFile(resolveInside(root, profilePath), "utf8"));
-  const errors = validateProfile(profile);
-  if (errors.length > 0) throw new Error(`Invalid CSS Modules profile: ${errors.join("; ")}`);
-  return profile;
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function globToRegExp(glob) {
-  let pattern = "^";
-  const normalized = glob.split(path.sep).join("/");
-  for (let index = 0; index < normalized.length; index += 1) {
-    const character = normalized[index];
-    if (character === "*" && normalized[index + 1] === "*") {
-      if (normalized[index + 2] === "/") {
-        pattern += "(?:.*/)?";
-        index += 2;
-      } else {
-        pattern += ".*";
-        index += 1;
-      }
-    } else if (character === "*") pattern += "[^/]*";
-    else if (character === "?") pattern += "[^/]";
-    else pattern += escapeRegExp(character);
-  }
-  return new RegExp(`${pattern}$`);
-}
-
-function matchesException(item, exception) {
-  return (
-    exception.kind === "rule" &&
-    exception.rule === item.ruleId &&
-    globToRegExp(exception.scope).test(item.file) &&
-    (!exception.match || item.message.includes(exception.match))
-  );
-}
 
 function oxlintBinary(root) {
   const resolvers = [
@@ -157,9 +115,7 @@ export async function checkWithOxlint({
 } = {}) {
   const resolvedRoot = path.resolve(root);
   const profile = await readProfile(resolvedRoot, profilePath);
-  const selectedSeverity = severity ?? profile.enforcement?.severity ?? "error";
-  if (!["warning", "error"].includes(selectedSeverity))
-    throw new Error("severity must be warning or error");
+  const selectedSeverity = selectSeverity(profile, severity);
 
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "css-modules-oxlint-config-"));
   const configPath = path.join(temporaryRoot, ".oxlintrc.json");
@@ -198,34 +154,12 @@ export async function checkWithOxlint({
           `Oxlint exited with ${execution.signal ?? execution.code}`,
       );
     }
-    const rawFindings = normalizeDiagnostics(execution.stdout, resolvedRoot, selectedSeverity).sort(
-      (left, right) =>
-        left.file.localeCompare(right.file) ||
-        left.line - right.line ||
-        left.column - right.column ||
-        left.ruleId.localeCompare(right.ruleId),
-    );
-    const findings = [];
-    const suppressed = [];
-    for (const item of rawFindings) {
-      const exception = (profile.exceptions ?? []).find((candidate) =>
-        matchesException(item, candidate),
-      );
-      if (exception) suppressed.push({ finding: item, exception });
-      else findings.push(item);
-    }
-    const status = findings.some(({ severity: itemSeverity }) => itemSeverity === "error")
-      ? "failed"
-      : findings.length > 0
-        ? "warnings"
-        : "passed";
+    const rawFindings = normalizeDiagnostics(execution.stdout, resolvedRoot, selectedSeverity);
     return {
       root: resolvedRoot,
       profilePath,
       severity: selectedSeverity,
-      status,
-      findings,
-      suppressed,
+      ...finalizeFindings(rawFindings, profile.exceptions ?? []),
     };
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
@@ -233,21 +167,11 @@ export async function checkWithOxlint({
 }
 
 export function exitCodeForOxlint(result) {
-  return result.status === "failed" ? 1 : 0;
+  return exitCodeForFindings(result);
 }
 
 export function formatOxlint(result) {
-  const lines = [`CSS Modules Oxlint checks: ${result.root}`, ""];
-  for (const item of result.findings) {
-    lines.push(
-      `${item.severity.toUpperCase()} ${item.file}:${item.line}:${item.column} ${item.ruleId} ${item.message}`,
-    );
-  }
-  if (result.findings.length === 0) lines.push("No violations.");
-  if (result.suppressed.length > 0)
-    lines.push("", `Suppressed by documented exceptions: ${result.suppressed.length}`);
-  lines.push("", `Result: ${result.status}`);
-  return lines.join("\n");
+  return formatFindingsReport(result, "CSS Modules Oxlint checks");
 }
 
 function parseArgs(argv) {

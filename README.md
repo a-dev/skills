@@ -36,20 +36,9 @@ npx skills add a-dev/skills \
   --agent codex
 ```
 
-Use `--agent claude-code` for Claude Code. For a user-level installation, run the same command with `--global`; do not keep project and user copies of the same skill and rely on host precedence.
+Use `--agent claude-code` for Claude Code, and add `--global` for a user-level installation.
 
-After installation, verify that both skills appear in the host's available-skill catalog. Skill directories and manual-only behavior vary by host; basic `SKILL.md` instructions are portable, but host metadata may not be.
-
-The [`skills` CLI](https://github.com/vercel-labs/skills) currently maps the supported hosts like this:
-
-| Host        | Project installation | Global installation | Verify                                                                           |
-| ----------- | -------------------- | ------------------- | -------------------------------------------------------------------------------- |
-| Codex       | `.agents/skills/`    | `~/.codex/skills/`  | `npx skills list --agent codex` and inspect Codex's available skills             |
-| Claude Code | `.claude/skills/`    | `~/.claude/skills/` | `npx skills list --agent claude-code` and inspect Claude Code's available skills |
-
-Invoke `css-modules-setup` explicitly through the host's skill mechanism. `disable-model-invocation` and slash-command behavior are host metadata, not a portable guarantee of the Agent Skills format.
-
-The tested host instructions live in [`host-codex.md`](skills/frontend/css-modules-setup/adapters/host-codex.md) and [`host-claude-code.md`](skills/frontend/css-modules-setup/adapters/host-claude-code.md). Each includes an executable discovery check that rejects drifted or shadowing copies. The CLI's path checks are covered by fixtures; inspecting the host's actual catalog is still required.
+Host paths for the [`skills` CLI](https://github.com/vercel-labs/skills), catalog verification, the executable discovery check that rejects drifted or shadowing copies, and the shadow-copy rules live in [`adapters/hosts.md`](skills/frontend/css-modules-setup/adapters/hosts.md).
 
 ## Frontend CSS Modules harness
 

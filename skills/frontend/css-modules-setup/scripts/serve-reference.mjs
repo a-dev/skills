@@ -6,9 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
-import { patchCssModules } from "vite-css-modules";
 
 const scriptRoot = path.dirname(fileURLToPath(import.meta.url));
 const skillRoot = path.dirname(scriptRoot);
@@ -20,21 +18,13 @@ const fixture = path.join(temporaryRoot, "fixture");
 await cp(sourceFixture, fixture, { recursive: true });
 await symlink(path.join(repositoryRoot, "node_modules"), path.join(fixture, "node_modules"), "dir");
 
+// The copied fixture's own vite.config.ts is the single source of the adapter
+// configuration; duplicating it inline here previously risked silent drift.
 const server = await createServer({
   root: fixture,
-  configFile: false,
+  configFile: path.join(fixture, "vite.config.ts"),
+  configLoader: "runner",
   logLevel: "error",
-  resolve: {
-    alias: {
-      "#styles": path.join(fixture, "src", "shared", "styles"),
-    },
-  },
-  css: {
-    modules: {
-      localsConvention: "camelCaseOnly",
-    },
-  },
-  plugins: [react(), patchCssModules({ generateSourceTypes: true, declarationMap: true })],
   server: { host: "127.0.0.1", port: 4173, strictPort: true },
 });
 

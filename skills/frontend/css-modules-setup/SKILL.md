@@ -36,15 +36,7 @@ The planner is read-only by default. `bootstrap`, `align`, and `migrate` accept 
 
 ## Step 1 — establish a read-only baseline
 
-Read `references/discovery.md`, then:
-
-1. detect the package manager and workspace layout;
-2. identify candidate Vite application roots;
-3. locate repository instructions and any existing profile;
-4. inspect aliases, helpers, shared modules, layer declarations, color files, CSS-specific commands, and their CI ordering;
-5. compare methodology, profile-schema, and adapter versions;
-6. record relevant pre-existing command failures;
-7. identify dirty files without modifying them.
+Read `references/discovery.md`. The bundled audit discovers the package manager, application roots, aliases, helpers, shared modules, layers, color files, CSS-specific commands, CI ordering, and version drift; additionally record repository instructions, pre-existing command failures, and dirty files.
 
 Run the bundled audit when available:
 
@@ -100,24 +92,6 @@ Before writing, print:
 - preserved compatible alternatives;
 - CSS-harness commands that will run;
 - explicit non-goals.
-
-Example:
-
-```text
-Target: apps/web
-Mode: align
-Package manager: pnpm
-
-CREATE  .agents/css-modules.json
-MODIFY  apps/web/vite.config.ts
-  - preserve react(), sentry(), and generateScopedName
-  - add patchCssModules({ generateSourceTypes: true })
-SKIP    apps/web/src/styles/cx.ts
-  - compatible existing helper selected
-
-No production component will be restyled.
-No spacing or sizing scale will be created.
-```
 
 In `audit` and `verify`, print the plan as a report and do not offer automatic edits.
 
@@ -222,17 +196,6 @@ On partial failure, do not erase successful user-owned changes. Name the last co
 | `ambiguous`              | multiple valid owners or targets exist                     |
 | `not-verifiable`         | static inspection cannot prove behavior safely             |
 | `compatible-alternative` | different implementation with verified equivalent behavior |
-
-## Pressure checks
-
-| Temptation                                   | Required response                                                            |
-| -------------------------------------------- | ---------------------------------------------------------------------------- |
-| “It is a fresh app; just choose everything.” | Present the reference proposal; let the developer edit project-wide choices. |
-| “Replace this config; merging is slower.”    | Preserve existing behavior and merge structurally.                           |
-| “Use npm; the command is equivalent.”        | Use the detected package manager and workspace syntax.                       |
-| “Restyle one real Button to prove it works.” | Use a disposable or project-owned fixture.                                   |
-| “Normalize these values to a 4px grid.”      | Spacing and sizing are outside the generic setup.                            |
-| “The existing topology differs; migrate it.” | Migration requires an explicit request.                                      |
 
 ## Completion criterion
 

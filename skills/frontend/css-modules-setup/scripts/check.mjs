@@ -3,7 +3,7 @@
 import babelParser from "@babel/eslint-parser";
 import { spawn } from "node:child_process";
 import { ESLint } from "eslint";
-import { access, readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -14,84 +14,20 @@ import stylelint from "stylelint";
 
 import eslintPlugin, { eslintRuleIds } from "../harness/eslint-plugin.mjs";
 import stylelintPlugins, { stylelintRuleIds } from "../harness/stylelint-plugin.mjs";
-import { validateProfile } from "./audit.mjs";
+import {
+  escapeRegExp,
+  exists,
+  exitCodeForFindings,
+  finalizeFindings,
+  formatFindingsReport,
+  matchesGlob,
+  readProfile,
+  resolveInside,
+  selectSeverity,
+  walk,
+} from "./lib.mjs";
 
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".mts", ".cjs", ".cts"]);
-const SKIPPED_DIRECTORIES = new Set([
-  ".git",
-  "node_modules",
-  "dist",
-  "build",
-  "coverage",
-  "test-results",
-]);
-
-async function exists(filePath) {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function resolveInside(root, relativePath) {
-  const resolved = path.resolve(root, relativePath);
-  const relative = path.relative(root, resolved);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`Checker path escapes the project root: ${relativePath}`);
-  }
-  return resolved;
-}
-
-async function walk(directory, predicate, output = []) {
-  if (!(await exists(directory))) return output;
-  const entries = (await readdir(directory, { withFileTypes: true })).sort((left, right) =>
-    left.name.localeCompare(right.name),
-  );
-  for (const entry of entries) {
-    if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) await walk(entryPath, predicate, output);
-    else if (predicate(entryPath)) output.push(entryPath);
-  }
-  return output;
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function globToRegExp(glob) {
-  let pattern = "^";
-  const normalized = glob.split(path.sep).join("/");
-  for (let index = 0; index < normalized.length; index += 1) {
-    const character = normalized[index];
-    if (character === "*" && normalized[index + 1] === "*") {
-      if (normalized[index + 2] === "/") {
-        pattern += "(?:.*/)?";
-        index += 2;
-      } else {
-        pattern += ".*";
-        index += 1;
-      }
-    } else if (character === "*") pattern += "[^/]*";
-    else if (character === "?") pattern += "[^/]";
-    else pattern += escapeRegExp(character);
-  }
-  return new RegExp(`${pattern}$`);
-}
-
-function matchesGlob(file, glob) {
-  return globToRegExp(glob).test(file.split(path.sep).join("/"));
-}
-
-async function readProfile(root, profilePath) {
-  const profile = JSON.parse(await readFile(resolveInside(root, profilePath), "utf8"));
-  const errors = validateProfile(profile);
-  if (errors.length > 0) throw new Error(`Invalid CSS Modules profile: ${errors.join("; ")}`);
-  return profile;
-}
 
 function finding({ engine, ruleId, file, line = 1, column = 1, message, severity }) {
   return { engine, ruleId, file, line, column, message, severity };
@@ -376,15 +312,6 @@ async function runContracts(root, profile, severity) {
   return findings;
 }
 
-function matchesException(item, exception) {
-  return (
-    exception.kind === "rule" &&
-    exception.rule === item.ruleId &&
-    matchesGlob(item.file, exception.scope) &&
-    (!exception.match || item.message.includes(exception.match))
-  );
-}
-
 export async function checkProject({
   root = process.cwd(),
   profilePath = ".agents/css-modules.json",
@@ -392,47 +319,23 @@ export async function checkProject({
 } = {}) {
   const resolvedRoot = path.resolve(root);
   const profile = await readProfile(resolvedRoot, profilePath);
-  const selectedSeverity = severity ?? profile.enforcement?.severity ?? "error";
-  if (!["warning", "error"].includes(selectedSeverity))
-    throw new Error("severity must be warning or error");
+  const selectedSeverity = selectSeverity(profile, severity);
   const palette = await paletteTokens(resolvedRoot, profile);
   const rawFindings = [
     ...(await runEslint(resolvedRoot, profile, selectedSeverity)),
     ...(await runStylelint(resolvedRoot, profile, selectedSeverity, palette)),
     ...(await runContracts(resolvedRoot, profile, selectedSeverity)),
-  ].sort(
-    (left, right) =>
-      left.file.localeCompare(right.file) ||
-      left.line - right.line ||
-      left.column - right.column ||
-      left.ruleId.localeCompare(right.ruleId),
-  );
-  const findings = [];
-  const suppressed = [];
-  for (const item of rawFindings) {
-    const exception = (profile.exceptions ?? []).find((candidate) =>
-      matchesException(item, candidate),
-    );
-    if (exception) suppressed.push({ finding: item, exception });
-    else findings.push(item);
-  }
-  const status = findings.some(({ severity: itemSeverity }) => itemSeverity === "error")
-    ? "failed"
-    : findings.length > 0
-      ? "warnings"
-      : "passed";
+  ];
   return {
     root: resolvedRoot,
     profilePath,
     severity: selectedSeverity,
-    status,
-    findings,
-    suppressed,
+    ...finalizeFindings(rawFindings, profile.exceptions ?? []),
   };
 }
 
 export function exitCodeForCheck(result) {
-  return result.status === "failed" ? 1 : 0;
+  return exitCodeForFindings(result);
 }
 
 function runCommand(command, cwd) {
@@ -457,17 +360,7 @@ export async function runProfileCommands({ root, profilePath = ".agents/css-modu
 }
 
 export function formatCheck(result) {
-  const lines = [`CSS Modules source checks: ${result.root}`, ""];
-  for (const item of result.findings) {
-    lines.push(
-      `${item.severity.toUpperCase()} ${item.file}:${item.line}:${item.column} ${item.ruleId} ${item.message}`,
-    );
-  }
-  if (result.findings.length === 0) lines.push("No violations.");
-  if (result.suppressed.length > 0)
-    lines.push("", `Suppressed by documented exceptions: ${result.suppressed.length}`);
-  lines.push("", `Result: ${result.status}`);
-  return lines.join("\n");
+  return formatFindingsReport(result, "CSS Modules source checks");
 }
 
 function parseArgs(argv) {

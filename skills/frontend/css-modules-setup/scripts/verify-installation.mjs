@@ -1,37 +1,22 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { access, readFile, readdir, realpath } from "node:fs/promises";
+import { readFile, readdir, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { exists } from "./lib.mjs";
+
 export const HOSTS = {
-  codex: {
-    project: ".agents/skills",
-    global: ".codex/skills",
-    manualSetup: "invoke css-modules-setup explicitly from Codex's available skills",
-  },
-  "claude-code": {
-    project: ".claude/skills",
-    global: ".claude/skills",
-    manualSetup: "invoke css-modules-setup explicitly through Claude Code's skill command",
-  },
+  codex: { project: ".agents/skills", global: ".codex/skills" },
+  "claude-code": { project: ".claude/skills", global: ".claude/skills" },
 };
 
 const SKILL_NAMES = ["css-modules-setup", "css-modules"];
 const DEFAULT_CANONICAL_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules", "dist", "build"]);
-
-async function exists(filePath) {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function filesUnder(directory, output = [], prefix = "") {
   if (!(await exists(directory))) return output;

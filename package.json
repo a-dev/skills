@@ -14,8 +14,8 @@
     "css:fixture": "node skills/frontend/css-modules-setup/scripts/verify-reference.mjs",
     "css:oxlint": "node skills/frontend/css-modules-setup/scripts/check-oxlint.mjs --root skills/frontend/css-modules-setup/fixtures/vite-react",
     "css:browser": "playwright test --config skills/frontend/css-modules-setup/playwright.config.mjs",
-    "css:verify": "npm run css:check && npm run css:fixture && npm run css:oxlint && npm run css:browser",
-    "prepack": "npm run css:check && npm run css:fixture"
+    "css:verify": "npm run css:check && npm run css:oxlint && npm run css:browser",
+    "prepack": "npm run css:check"
   },
   "devDependencies": {
     "@babel/core": "8.0.1",

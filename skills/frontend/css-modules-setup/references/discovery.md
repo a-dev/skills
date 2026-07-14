@@ -10,18 +10,17 @@ Load this reference at the beginning of every setup run.
 - Report behavior that static inspection cannot prove as `not-verifiable`.
 - Run write-capable verification only in explicit `verify`, `bootstrap`, `align`, or `migrate` modes.
 
-## Package manager
+## Run the audit, then look where it cannot
 
-Use `packageManager` and lockfiles:
+`scripts/audit.mjs` detects the package manager (from `packageManager` and lockfiles; more than one lockfile family is ambiguity — never create a second lockfile), the profile and its versions, aliases, shared entry points and exports, layer declarations and ownership, color files and `color-scheme` mapping, recorded commands, and their CI ordering.
 
-| Marker                    | Manager |
-| ------------------------- | ------- |
-| `pnpm-lock.yaml`          | pnpm    |
-| `yarn.lock`               | Yarn    |
-| `bun.lock` or `bun.lockb` | Bun     |
-| `package-lock.json`       | npm     |
+Inspect by hand what the audit cannot see:
 
-More than one current lockfile is ambiguity. Never create a second lockfile.
+- repository instructions and local skill files;
+- helper implementations;
+- external `composes` paths;
+- package boundaries under workspace manifests;
+- pre-existing command failures and dirty files.
 
 ## Application roots
 
@@ -29,27 +28,9 @@ Find workspace declarations and candidate Vite configs:
 
 - `vite.config.ts`, `.mts`, `.js`, `.mjs`, `.cjs`, or `.cts`;
 - package scripts that invoke Vite;
-- source entries that import a global stylesheet;
-- package boundaries under workspace manifests.
+- source entries that import a global stylesheet.
 
 If multiple candidates are plausible and no profile selects one, ask the user.
-
-## Existing style contract
-
-Inspect:
-
-- repository instructions and local skill files;
-- `.agents/css-modules.json` and its schema;
-- CSS Module aliases in package imports, Vite, and TypeScript;
-- shared entry points and their exports;
-- external `composes` paths;
-- all top-level layer-order declarations;
-- layer ownership in shared modules;
-- helper implementations;
-- palette, semantic color, and `color-scheme` files;
-- CSS declaration generation and class-key typecheck commands;
-- CSS-specific lint, contract, fixture, or browser commands, when present;
-- CI ordering for those CSS-harness commands.
 
 ## Classify findings
 

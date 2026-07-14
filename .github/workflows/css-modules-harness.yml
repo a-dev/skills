@@ -16,14 +16,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Audit, setup, template, and evaluation fixtures
+      - name: Audit, setup, reference, template, and evaluation fixtures
         run: npm run css:check
-      - name: Model trigger and pressure evaluation categories
-        run: npm run css:evaluate
       - name: Read-only audit check mode
         run: npm run css:audit-fixture
-      - name: Reference declaration, typecheck, ESLint, Stylelint, contract, and build fixture
-        run: npm run css:fixture
 
   browser-fixtures:
     runs-on: ubuntu-latest

@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { auditProject, validateProfile } from "./audit.mjs";
+import { auditProject } from "./audit.mjs";
+import { exists, readJson, resolveInside, validateProfile } from "./lib.mjs";
 
 const MODES = new Set(["audit", "bootstrap", "align", "migrate", "verify"]);
 const SCRIPT_ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -13,7 +14,7 @@ const SKILL_ROOT = path.dirname(SCRIPT_ROOT);
 const ASSET_ROOT = path.join(SKILL_ROOT, "assets");
 const TEMPLATE_ROOT = path.join(ASSET_ROOT, "templates");
 const HARNESS_ROOT = path.join(SKILL_ROOT, "harness");
-const SCRIPT_ROOT_FILES = ["audit.mjs", "check.mjs", "check-oxlint.mjs"];
+const SCRIPT_ROOT_FILES = ["audit.mjs", "check.mjs", "check-oxlint.mjs", "lib.mjs"];
 const HARNESS_FILES = ["eslint-plugin.mjs", "oxlint-plugin.mjs", "stylelint-plugin.mjs"];
 const ENFORCEMENT_DEPENDENCIES = [
   "@babel/core",
@@ -26,30 +27,6 @@ const ENFORCEMENT_DEPENDENCIES = [
   "postcss-value-parser",
   "stylelint",
 ];
-
-async function exists(filePath) {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function resolveInside(root, relativePath) {
-  const resolved = path.resolve(root, relativePath);
-  const relative = path.relative(root, resolved);
-
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`Setup path escapes the project root: ${relativePath}`);
-  }
-
-  return resolved;
-}
-
-async function readJson(filePath) {
-  return JSON.parse(await readFile(filePath, "utf8"));
-}
 
 async function readTemplate(name) {
   return readFile(path.join(TEMPLATE_ROOT, name), "utf8");

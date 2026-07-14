@@ -23,6 +23,6 @@ Run the browser assertions from the skills repository:
 npm run css:browser
 ```
 
-They verify normal layer order, unlayered-local precedence, external composition, light/dark semantic colors, private and ARIA state, caller classes, custom properties, focus behavior, reduced motion, and forced-colors routing.
+The spec in `browser-tests/reference.spec.mjs` covers the runtime behaviors setup step 6 must prove, plus caller classes, custom properties, focus behavior, reduced motion, and forced-colors routing.
 
 Do not copy the fixture into a target application's production source. It is evidence for the adapter, not an application starter component.

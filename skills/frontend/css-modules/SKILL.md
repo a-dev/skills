@@ -32,18 +32,9 @@ The profile records choices; executable configuration remains authoritative. If 
 
 Reference examples use `#styles`, `cx`, `cssVars`, `layout`, `typography`, `utils`, and `reset, base, atoms, ui`. Substitute the profile's actual names and topology.
 
-## Portable invariants and project choices
+## Project choices
 
-The portable invariants are:
-
-- generated declarations plus TypeScript validate CSS Module keys;
-- closed variants use exhaustive typed lookups;
-- native, ARIA, library, and private state keep their semantic source;
-- shared and local style precedence is deterministic;
-- the agent preserves the project's shared API and layer ownership;
-- components use semantic colors when the project adopts that color contract.
-
-The project chooses:
+The source rules below are portable. The project chooses:
 
 - alias, helpers, styles root, entry point, and shared module boundaries;
 - layer names, order, ownership, and local-module strategy;
@@ -99,16 +90,7 @@ Do not run generic application `lint`, `test`, `build`, or `dev` commands merely
 
 ### 5. Runtime verification
 
-Observe runtime behavior through the project's existing browser, Storybook, preview, or component-test entry. Static checks alone never prove visual verification. Select applicable cases from the profile:
-
-| Dimension   | Typical cases                                |
-| ----------- | -------------------------------------------- |
-| Theme       | system, light, dark                          |
-| Viewport    | project breakpoints or representative widths |
-| Interaction | default, hover, focus-visible, active        |
-| State       | disabled, loading, selected, error           |
-| Preference  | reduced motion, forced colors                |
-| Direction   | LTR and RTL when supported                   |
+Observe runtime behavior through the project's existing browser, Storybook, preview, or component-test entry. Static checks alone never prove visual verification. Select applicable cases from the profile's recorded `runtimeVerification` dimensions: theme, viewport, interaction, state, preference, and direction.
 
 Inspect the DOM contract with the visible output:
 
@@ -229,16 +211,6 @@ External `composes` paths must use the configured alias and pass the recorded st
 ### Private custom properties use `--_`
 
 Use `--_name` for component-internal runtime plumbing. Public custom properties require a documented component or design-system contract.
-
-## Pressure checks
-
-| Temptation                                     | Required response                                                 |
-| ---------------------------------------------- | ----------------------------------------------------------------- |
-| “It is only CSS; skip verification.”           | Run the configured checks and observe the UI when available.      |
-| “Create a 4px scale for consistency.”          | Preserve project values; do not invent a generic scale.           |
-| “Add shared helpers now in case we need them.” | Follow the project's admission rule; do not speculate.            |
-| “Use a computed key to avoid boilerplate.”     | Keep the exhaustive typed lookup.                                 |
-| “Mirror this ARIA state into `data-*`.”        | Style the semantic source unless a distinct private state exists. |
 
 ## Completion criterion
 

@@ -1,16 +1,13 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { readJson } from "./lib.mjs";
+
 const SCRIPT_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_ROOT, "../../../..");
-
-async function readJson(filePath) {
-  return JSON.parse(await readFile(filePath, "utf8"));
-}
 
 export function evaluateResponses(cases, responses) {
   const responseById = new Map(responses.map((response) => [response.id, response]));

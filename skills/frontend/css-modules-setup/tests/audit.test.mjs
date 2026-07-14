@@ -455,7 +455,7 @@ test("reports profile paths that escape the project root", async () => {
     assert.equal(result.status, "ambiguous");
     assert.match(
       result.findings.find(({ id }) => id === "styles.global")?.detail ?? "",
-      /escapes the audit root/,
+      /escapes the project root/,
     );
   } finally {
     await rm(root, { recursive: true, force: true });
