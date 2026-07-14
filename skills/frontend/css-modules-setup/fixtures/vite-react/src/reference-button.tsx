@@ -4,10 +4,7 @@ import styles from "./reference-button.module.css";
 
 type Variant = "primary" | "secondary";
 
-type ReferenceButtonProps = Omit<
-  ComponentPropsWithoutRef<"button">,
-  "aria-pressed" | "style"
-> & {
+type ReferenceButtonProps = Omit<ComponentPropsWithoutRef<"button">, "aria-pressed" | "style"> & {
   loading?: boolean;
   pressed: boolean;
   progress?: number;

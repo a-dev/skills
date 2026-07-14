@@ -54,47 +54,58 @@ export async function verifyReferenceFixture() {
 
   try {
     await cp(FIXTURE_ROOT, fixture, { recursive: true });
-    await symlink(path.join(REPOSITORY_ROOT, "node_modules"), path.join(fixture, "node_modules"), "dir");
+    await symlink(
+      path.join(REPOSITORY_ROOT, "node_modules"),
+      path.join(fixture, "node_modules"),
+      "dir",
+    );
 
     const vite = path.join(REPOSITORY_ROOT, "node_modules", ".bin", "vite");
     const buildResult = await run(
       vite,
-      [
-        "build",
-        "--config",
-        "vite.config.ts",
-        "--configLoader",
-        "runner",
-        "--logLevel",
-        "warn",
-      ],
+      ["build", "--config", "vite.config.ts", "--configLoader", "runner", "--logLevel", "warn"],
       { cwd: fixture },
     );
     if (buildResult.code !== 0) {
-      throw new Error(`Reference fixture build failed:\n${buildResult.stdout}${buildResult.stderr}`);
+      throw new Error(
+        `Reference fixture build failed:\n${buildResult.stdout}${buildResult.stderr}`,
+      );
     }
     const declarations = await findGeneratedDeclarations(fixture);
     const relativeDeclarations = declarations
       .map((filePath) => path.relative(fixture, filePath).split(path.sep).join("/"))
       .sort();
     if (relativeDeclarations.length < 3) {
-      throw new Error(`Expected generated declarations for the fixture modules; found ${relativeDeclarations.length}`);
+      throw new Error(
+        `Expected generated declarations for the fixture modules; found ${relativeDeclarations.length}`,
+      );
     }
 
     const tsc = path.join(REPOSITORY_ROOT, "node_modules", ".bin", "tsc");
-    const typecheck = await run(tsc, ["--project", path.join(fixture, "tsconfig.json"), "--noEmit"]);
+    const typecheck = await run(tsc, [
+      "--project",
+      path.join(fixture, "tsconfig.json"),
+      "--noEmit",
+    ]);
     if (typecheck.code !== 0) {
-      throw new Error(`Reference fixture typecheck failed:\n${typecheck.stdout}${typecheck.stderr}`);
+      throw new Error(
+        `Reference fixture typecheck failed:\n${typecheck.stdout}${typecheck.stderr}`,
+      );
     }
 
     const sourceChecks = await checkProject({ root: fixture });
     if (sourceChecks.status !== "passed") {
-      throw new Error(`Reference fixture source checks failed:\n${JSON.stringify(sourceChecks.findings, null, 2)}`);
+      throw new Error(
+        `Reference fixture source checks failed:\n${JSON.stringify(sourceChecks.findings, null, 2)}`,
+      );
     }
 
     const componentPath = path.join(fixture, "src", "reference-button.tsx");
     const component = await readFile(componentPath, "utf8");
-    await writeFile(componentPath, `${component}\nexport const invalidClassProbe = styles.missingClass;\n`);
+    await writeFile(
+      componentPath,
+      `${component}\nexport const invalidClassProbe = styles.missingClass;\n`,
+    );
     const invalidTypecheck = await run(tsc, [
       "--project",
       path.join(fixture, "tsconfig.json"),

@@ -11,7 +11,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { oxlintRuleIds } from "../harness/oxlint-plugin.mjs";
 import { validateProfile } from "./audit.mjs";
 
-const CATEGORY_NAMES = ["correctness", "nursery", "pedantic", "perf", "restriction", "style", "suspicious"];
+const CATEGORY_NAMES = [
+  "correctness",
+  "nursery",
+  "pedantic",
+  "perf",
+  "restriction",
+  "style",
+  "suspicious",
+];
 
 function resolveInside(root, relativePath) {
   const resolved = path.resolve(root, relativePath);
@@ -54,14 +62,19 @@ function globToRegExp(glob) {
 }
 
 function matchesException(item, exception) {
-  return exception.kind === "rule" &&
+  return (
+    exception.kind === "rule" &&
     exception.rule === item.ruleId &&
     globToRegExp(exception.scope).test(item.file) &&
-    (!exception.match || item.message.includes(exception.match));
+    (!exception.match || item.message.includes(exception.match))
+  );
 }
 
 function oxlintBinary(root) {
-  const resolvers = [createRequire(path.join(root, "package.json")), createRequire(import.meta.url)];
+  const resolvers = [
+    createRequire(path.join(root, "package.json")),
+    createRequire(import.meta.url),
+  ];
   for (const resolveFrom of resolvers) {
     try {
       const packageJsonPath = resolveFrom.resolve("oxlint/package.json");
@@ -70,7 +83,9 @@ function oxlintBinary(root) {
       // Try the harness installation when a disposable test project has no dependencies.
     }
   }
-  throw new Error("Oxlint is not installed. Add the pinned oxlint dependency printed by the setup plan.");
+  throw new Error(
+    "Oxlint is not installed. Add the pinned oxlint dependency printed by the setup plan.",
+  );
 }
 
 function runProcess(command, args, cwd) {
@@ -78,8 +93,12 @@ function runProcess(command, args, cwd) {
     const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
     child.on("error", reject);
     child.on("exit", (code, signal) => resolve({ code, signal, stdout, stderr }));
   });
@@ -103,21 +122,26 @@ function diagnosticLocation(diagnostic) {
 function normalizeDiagnostics(payload, root, severity) {
   const parsed = JSON.parse(payload || "[]");
   if (Array.isArray(parsed) && parsed.some((item) => Array.isArray(item.messages))) {
-    return parsed.flatMap((result) => (result.messages ?? []).map((message) => ({
-      engine: "oxlint",
-      ruleId: ruleIdOf(message),
-      file: path.relative(root, result.filePath).split(path.sep).join("/"),
-      line: message.line ?? 1,
-      column: message.column ?? 1,
-      message: message.message,
-      severity,
-    })));
+    return parsed.flatMap((result) =>
+      (result.messages ?? []).map((message) => ({
+        engine: "oxlint",
+        ruleId: ruleIdOf(message),
+        file: path.relative(root, result.filePath).split(path.sep).join("/"),
+        line: message.line ?? 1,
+        column: message.column ?? 1,
+        message: message.message,
+        severity,
+      })),
+    );
   }
-  const diagnostics = Array.isArray(parsed) ? parsed : parsed.diagnostics ?? [];
+  const diagnostics = Array.isArray(parsed) ? parsed : (parsed.diagnostics ?? []);
   return diagnostics.map((diagnostic) => ({
     engine: "oxlint",
     ruleId: ruleIdOf(diagnostic),
-    file: path.relative(root, diagnostic.filename ?? diagnostic.filePath ?? root).split(path.sep).join("/"),
+    file: path
+      .relative(root, diagnostic.filename ?? diagnostic.filePath ?? root)
+      .split(path.sep)
+      .join("/"),
     ...diagnosticLocation(diagnostic),
     message: diagnostic.message,
     severity,
@@ -132,7 +156,8 @@ export async function checkWithOxlint({
   const resolvedRoot = path.resolve(root);
   const profile = await readProfile(resolvedRoot, profilePath);
   const selectedSeverity = severity ?? profile.enforcement?.severity ?? "error";
-  if (!["warning", "error"].includes(selectedSeverity)) throw new Error("severity must be warning or error");
+  if (!["warning", "error"].includes(selectedSeverity))
+    throw new Error("severity must be warning or error");
 
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "css-modules-oxlint-config-"));
   const configPath = path.join(temporaryRoot, ".oxlintrc.json");
@@ -141,7 +166,12 @@ export async function checkWithOxlint({
     categories: Object.fromEntries(CATEGORY_NAMES.map((name) => [name, "off"])),
     plugins: [],
     jsPlugins: [{ name: "css-modules", specifier: pathToFileURL(pluginPath).href }],
-    rules: Object.fromEntries(oxlintRuleIds.map((id) => [`css-modules/${id}`, selectedSeverity === "error" ? "error" : "warn"])),
+    rules: Object.fromEntries(
+      oxlintRuleIds.map((id) => [
+        `css-modules/${id}`,
+        selectedSeverity === "error" ? "error" : "warn",
+      ]),
+    ),
     settings: {
       cssModules: {
         classNamesHelper: profile.helpers.classNames,
@@ -160,21 +190,41 @@ export async function checkWithOxlint({
       resolvedRoot,
     );
     if (execution.signal || ![0, 1].includes(execution.code)) {
-      throw new Error(execution.stderr.trim() || execution.stdout.trim() || `Oxlint exited with ${execution.signal ?? execution.code}`);
+      throw new Error(
+        execution.stderr.trim() ||
+          execution.stdout.trim() ||
+          `Oxlint exited with ${execution.signal ?? execution.code}`,
+      );
     }
-    const rawFindings = normalizeDiagnostics(execution.stdout, resolvedRoot, selectedSeverity)
-      .sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line || left.column - right.column || left.ruleId.localeCompare(right.ruleId));
+    const rawFindings = normalizeDiagnostics(execution.stdout, resolvedRoot, selectedSeverity).sort(
+      (left, right) =>
+        left.file.localeCompare(right.file) ||
+        left.line - right.line ||
+        left.column - right.column ||
+        left.ruleId.localeCompare(right.ruleId),
+    );
     const findings = [];
     const suppressed = [];
     for (const item of rawFindings) {
-      const exception = (profile.exceptions ?? []).find((candidate) => matchesException(item, candidate));
+      const exception = (profile.exceptions ?? []).find((candidate) =>
+        matchesException(item, candidate),
+      );
       if (exception) suppressed.push({ finding: item, exception });
       else findings.push(item);
     }
     const status = findings.some(({ severity: itemSeverity }) => itemSeverity === "error")
       ? "failed"
-      : findings.length > 0 ? "warnings" : "passed";
-    return { root: resolvedRoot, profilePath, severity: selectedSeverity, status, findings, suppressed };
+      : findings.length > 0
+        ? "warnings"
+        : "passed";
+    return {
+      root: resolvedRoot,
+      profilePath,
+      severity: selectedSeverity,
+      status,
+      findings,
+      suppressed,
+    };
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
@@ -187,10 +237,13 @@ export function exitCodeForOxlint(result) {
 export function formatOxlint(result) {
   const lines = [`CSS Modules Oxlint checks: ${result.root}`, ""];
   for (const item of result.findings) {
-    lines.push(`${item.severity.toUpperCase()} ${item.file}:${item.line}:${item.column} ${item.ruleId} ${item.message}`);
+    lines.push(
+      `${item.severity.toUpperCase()} ${item.file}:${item.line}:${item.column} ${item.ruleId} ${item.message}`,
+    );
   }
   if (result.findings.length === 0) lines.push("No violations.");
-  if (result.suppressed.length > 0) lines.push("", `Suppressed by documented exceptions: ${result.suppressed.length}`);
+  if (result.suppressed.length > 0)
+    lines.push("", `Suppressed by documented exceptions: ${result.suppressed.length}`);
   lines.push("", `Result: ${result.status}`);
   return lines.join("\n");
 }
@@ -229,7 +282,11 @@ async function main() {
       return;
     }
     const result = await checkWithOxlint(options);
-    process.stdout.write(options.format === "json" ? `${JSON.stringify(result, null, 2)}\n` : `${formatOxlint(result)}\n`);
+    process.stdout.write(
+      options.format === "json"
+        ? `${JSON.stringify(result, null, 2)}\n`
+        : `${formatOxlint(result)}\n`,
+    );
     process.exitCode = exitCodeForOxlint(result);
   } catch (error) {
     process.stderr.write(`CSS Modules Oxlint checks failed: ${error.message}\n`);

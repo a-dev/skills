@@ -4,16 +4,16 @@ Load this reference when a component has loading, disabled, pressed, expanded, s
 
 ## One semantic source
 
-| Component state | Required source | Styling source |
-| --- | --- | --- |
-| Native disabled control | `disabled` | `:disabled` |
+| Component state                      | Required source                       | Styling source           |
+| ------------------------------------ | ------------------------------------- | ------------------------ |
+| Native disabled control              | `disabled`                            | `:disabled`              |
 | Focus-preserving unavailable control | `aria-disabled` plus guarded handlers | `[aria-disabled="true"]` |
-| Toggle button | `aria-pressed={boolean}` | value selector |
-| Disclosure | `aria-expanded={boolean}` | value selector |
-| Checkbox or switch | native `checked` or required ARIA | native or ARIA selector |
-| Invalid field | native validity or `aria-invalid` | native or ARIA selector |
-| Private visual loading state | `data-loading` | presence selector |
-| Headless component | library-owned state | library attribute |
+| Toggle button                        | `aria-pressed={boolean}`              | value selector           |
+| Disclosure                           | `aria-expanded={boolean}`             | value selector           |
+| Checkbox or switch                   | native `checked` or required ARIA     | native or ARIA selector  |
+| Invalid field                        | native validity or `aria-invalid`     | native or ARIA selector  |
+| Private visual loading state         | `data-loading`                        | presence selector        |
+| Headless component                   | library-owned state                   | library attribute        |
 
 Do not mirror a native, ARIA, or library state into `data-*` merely for styling.
 

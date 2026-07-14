@@ -136,11 +136,7 @@
           "required": ["strategy"],
           "properties": {
             "strategy": {
-              "enum": [
-                "project-review",
-                "second-semantic-consumer",
-                "explicit"
-              ]
+              "enum": ["project-review", "second-semantic-consumer", "explicit"]
             },
             "document": {
               "type": "string"
@@ -316,13 +312,7 @@
             }
           },
           "then": {
-            "required": [
-              "paletteFiles",
-              "semanticFiles",
-              "themeOwner",
-              "themeAttribute",
-              "modes"
-            ]
+            "required": ["paletteFiles", "semanticFiles", "themeOwner", "themeAttribute", "modes"]
           }
         }
       ]

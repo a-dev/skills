@@ -66,16 +66,16 @@ Read the profile and inspect the nearest comparable implementation. Identify the
 
 Route each concern before writing CSS:
 
-| Concern | Route |
-| --- | --- |
-| Closed design variant | exhaustive typed class lookup |
-| Native state | native attribute or pseudo-class |
-| Accessibility state | ARIA value selector |
-| Private boolean state | presence-based `data-*` |
-| Headless-library state | library-owned attribute |
-| Continuous runtime value | private custom property |
-| Reusable class | project shared-admission policy |
-| Local composition | local CSS Module |
+| Concern                  | Route                            |
+| ------------------------ | -------------------------------- |
+| Closed design variant    | exhaustive typed class lookup    |
+| Native state             | native attribute or pseudo-class |
+| Accessibility state      | ARIA value selector              |
+| Private boolean state    | presence-based `data-*`          |
+| Headless-library state   | library-owned attribute          |
+| Continuous runtime value | private custom property          |
+| Reusable class           | project shared-admission policy  |
+| Local composition        | local CSS Module                 |
 
 For detailed interaction and loading contracts, read `references/state-and-accessibility.md` when a component has state, ARIA, loading, selection, disclosure, or headless-library behavior.
 
@@ -101,14 +101,14 @@ Do not run generic application `lint`, `test`, `build`, or `dev` commands merely
 
 Observe runtime behavior through the project's existing browser, Storybook, preview, or component-test entry. Static checks alone never prove visual verification. Select applicable cases from the profile:
 
-| Dimension | Typical cases |
-| --- | --- |
-| Theme | system, light, dark |
-| Viewport | project breakpoints or representative widths |
-| Interaction | default, hover, focus-visible, active |
-| State | disabled, loading, selected, error |
-| Preference | reduced motion, forced colors |
-| Direction | LTR and RTL when supported |
+| Dimension   | Typical cases                                |
+| ----------- | -------------------------------------------- |
+| Theme       | system, light, dark                          |
+| Viewport    | project breakpoints or representative widths |
+| Interaction | default, hover, focus-visible, active        |
+| State       | disabled, loading, selected, error           |
+| Preference  | reduced motion, forced colors                |
+| Direction   | LTR and RTL when supported                   |
 
 Inspect the DOM contract with the visible output:
 
@@ -232,13 +232,13 @@ Use `--_name` for component-internal runtime plumbing. Public custom properties 
 
 ## Pressure checks
 
-| Temptation | Required response |
-| --- | --- |
-| “It is only CSS; skip verification.” | Run the configured checks and observe the UI when available. |
-| “Create a 4px scale for consistency.” | Preserve project values; do not invent a generic scale. |
-| “Add shared helpers now in case we need them.” | Follow the project's admission rule; do not speculate. |
-| “Use a computed key to avoid boilerplate.” | Keep the exhaustive typed lookup. |
-| “Mirror this ARIA state into `data-*`.” | Style the semantic source unless a distinct private state exists. |
+| Temptation                                     | Required response                                                 |
+| ---------------------------------------------- | ----------------------------------------------------------------- |
+| “It is only CSS; skip verification.”           | Run the configured checks and observe the UI when available.      |
+| “Create a 4px scale for consistency.”          | Preserve project values; do not invent a generic scale.           |
+| “Add shared helpers now in case we need them.” | Follow the project's admission rule; do not speculate.            |
+| “Use a computed key to avoid boilerplate.”     | Keep the exhaustive typed lookup.                                 |
+| “Mirror this ARIA state into `data-*`.”        | Style the semantic source unless a distinct private state exists. |
 
 ## Completion criterion
 

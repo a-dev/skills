@@ -21,10 +21,7 @@ function Fixture() {
       >
         Save
       </ReferenceButton>
-      <div
-        className={`${atoms.layerProbe} ${probeStyles.layerProbe}`}
-        data-testid="layer-probe"
-      >
+      <div className={`${atoms.layerProbe} ${probeStyles.layerProbe}`} data-testid="layer-probe">
         Cascade probe
       </div>
       <div className={probeStyles.composed} data-testid="composes-probe">

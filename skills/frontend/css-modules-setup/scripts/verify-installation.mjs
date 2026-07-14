@@ -35,7 +35,9 @@ async function exists(filePath) {
 
 async function filesUnder(directory, output = [], prefix = "") {
   if (!(await exists(directory))) return output;
-  const entries = (await readdir(directory, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name));
+  const entries = (await readdir(directory, { withFileTypes: true })).sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
   for (const entry of entries) {
     if (SKIPPED_DIRECTORIES.has(entry.name) || entry.name === ".DS_Store") continue;
     const filePath = path.join(directory, entry.name);
@@ -91,7 +93,8 @@ export async function verifyInstallation({
   scanRoots = [],
 } = {}) {
   if (!HOSTS[host]) throw new Error(`host must be one of: ${Object.keys(HOSTS).join(", ")}`);
-  if (!new Set(["project", "global"]).has(scope)) throw new Error("scope must be project or global");
+  if (!new Set(["project", "global"]).has(scope))
+    throw new Error("scope must be project or global");
 
   const expectedRoot = installationRoot({ host, scope, projectRoot, home });
   const otherScope = scope === "project" ? "global" : "project";
@@ -102,13 +105,33 @@ export async function verifyInstallation({
     const expected = path.join(expectedRoot, name);
     const canonical = path.join(canonicalRoot, name);
     if (!(await exists(expected))) {
-      findings.push({ id: `install.expected.${name}`, status: "missing", path: expected, detail: "Skill is absent from the host discovery directory." });
+      findings.push({
+        id: `install.expected.${name}`,
+        status: "missing",
+        path: expected,
+        detail: "Skill is absent from the host discovery directory.",
+      });
       continue;
     }
-    const [installedDigest, canonicalDigest] = await Promise.all([treeDigest(expected), treeDigest(canonical)]);
-    findings.push(installedDigest === canonicalDigest
-      ? { id: `install.expected.${name}`, status: "aligned", path: expected, detail: "Installed skill matches the canonical source." }
-      : { id: `install.expected.${name}`, status: "drifted", path: expected, detail: "Installed skill differs from the canonical source; update before use." });
+    const [installedDigest, canonicalDigest] = await Promise.all([
+      treeDigest(expected),
+      treeDigest(canonical),
+    ]);
+    findings.push(
+      installedDigest === canonicalDigest
+        ? {
+            id: `install.expected.${name}`,
+            status: "aligned",
+            path: expected,
+            detail: "Installed skill matches the canonical source.",
+          }
+        : {
+            id: `install.expected.${name}`,
+            status: "drifted",
+            path: expected,
+            detail: "Installed skill differs from the canonical source; update before use.",
+          },
+    );
 
     const shadow = path.join(otherRoot, name);
     if ((await exists(shadow)) && !(await sameLocation(expected, shadow))) {
@@ -127,7 +150,9 @@ export async function verifyInstallation({
   ];
   for (const scanRoot of scanRoots) {
     for (const copy of await discoveredCopies(scanRoot)) {
-      const isAllowed = (await Promise.all(allowed.map((directory) => sameLocation(copy.directory, directory)))).some(Boolean);
+      const isAllowed = (
+        await Promise.all(allowed.map((directory) => sameLocation(copy.directory, directory)))
+      ).some(Boolean);
       if (!isAllowed) {
         findings.push({
           id: `install.stale-copy.${copy.name}`,
@@ -160,7 +185,13 @@ export function formatInstallation(result) {
 }
 
 function parseArgs(argv) {
-  const options = { projectRoot: process.cwd(), home: os.homedir(), scope: "project", scanRoots: [], format: "human" };
+  const options = {
+    projectRoot: process.cwd(),
+    home: os.homedir(),
+    scope: "project",
+    scanRoots: [],
+    format: "human",
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--host") options.host = argv[++index];
@@ -197,7 +228,11 @@ async function main() {
       return;
     }
     const result = await verifyInstallation(options);
-    process.stdout.write(options.format === "json" ? `${JSON.stringify(result, null, 2)}\n` : `${formatInstallation(result)}\n`);
+    process.stdout.write(
+      options.format === "json"
+        ? `${JSON.stringify(result, null, 2)}\n`
+        : `${formatInstallation(result)}\n`,
+    );
     process.exitCode = result.status === "aligned" ? 0 : 1;
   } catch (error) {
     process.stderr.write(`Installation verification failed: ${error.message}\n`);

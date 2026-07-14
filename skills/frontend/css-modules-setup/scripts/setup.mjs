@@ -56,10 +56,12 @@ async function readTemplate(name) {
 }
 
 async function bundledCheckerFiles() {
-  const files = [{
-    path: ".agents/css-modules-harness/versions.json",
-    content: await readFile(path.join(SKILL_ROOT, "versions.json"), "utf8"),
-  }];
+  const files = [
+    {
+      path: ".agents/css-modules-harness/versions.json",
+      content: await readFile(path.join(SKILL_ROOT, "versions.json"), "utf8"),
+    },
+  ];
   for (const name of SCRIPT_ROOT_FILES) {
     files.push({
       path: `.agents/css-modules-harness/scripts/${name}`,
@@ -133,7 +135,10 @@ function colorInputs(profile, inputs) {
 
   const globalPath = profile.globalStylesheet;
   const imports = [...profile.colorTokens.paletteFiles, ...profile.colorTokens.semanticFiles]
-    .map((filePath) => `@import "${importSpecifier(globalPath, filePath)}" layer(${inputs.colorLayer});`)
+    .map(
+      (filePath) =>
+        `@import "${importSpecifier(globalPath, filePath)}" layer(${inputs.colorLayer});`,
+    )
     .join("\n");
   const attribute = profile.colorTokens.themeAttribute;
   const explicitModes = profile.colorTokens.modes.filter((mode) => mode !== "system");
@@ -241,7 +246,9 @@ async function classifyDesiredFiles(root, desiredFiles, { allowReplace = false }
   const changes = [];
   const conflicts = [];
 
-  for (const desired of [...desiredFiles].sort((left, right) => left.path.localeCompare(right.path))) {
+  for (const desired of [...desiredFiles].sort((left, right) =>
+    left.path.localeCompare(right.path),
+  )) {
     const target = resolveInside(root, desired.path);
     if (!(await exists(target))) {
       changes.push({ action: "create", ...desired });
@@ -323,9 +330,7 @@ export async function planSetup({
   const storedProfile = readsTargetProfile
     ? profile
     : { ...profile, $schema: "./css-modules.schema.json" };
-  const desiredFiles = [
-    { path: ".agents/css-modules.schema.json", content: schema },
-  ];
+  const desiredFiles = [{ path: ".agents/css-modules.schema.json", content: schema }];
   if (!readsTargetProfile || !(await exists(targetProfilePath))) {
     desiredFiles.push({
       path: ".agents/css-modules.json",
@@ -424,7 +429,11 @@ export function formatPlan(plan) {
   for (const input of plan.requiredInputs) {
     lines.push(`INPUT   ${input}`);
   }
-  if (plan.changes.length === 0 && plan.conflicts.length === 0 && plan.requiredInputs.length === 0) {
+  if (
+    plan.changes.length === 0 &&
+    plan.conflicts.length === 0 &&
+    plan.requiredInputs.length === 0
+  ) {
     lines.push("No mutations planned.");
   }
   return lines.join("\n");

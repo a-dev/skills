@@ -27,13 +27,15 @@ function profile(overrides = {}) {
     helpers: { classNames: "mergeClasses", cssVariables: "styleVariables" },
     sharedApi: {
       entryPoint: "src/styles/index.ts",
-      modules: [{
-        name: "atoms",
-        export: "atoms",
-        path: "src/styles/atoms.module.css",
-        layer: "components",
-        publicClasses: ["root"],
-      }],
+      modules: [
+        {
+          name: "atoms",
+          export: "atoms",
+          path: "src/styles/atoms.module.css",
+          layer: "components",
+          publicClasses: ["root"],
+        },
+      ],
       admissionRule: { strategy: "project-review" },
     },
     layers: {
@@ -99,13 +101,25 @@ export function Button({ busy }: { busy: boolean }) {
 
 async function run(root, ...args) {
   try {
-    const result = await execFileAsync(process.execPath, [runner.pathname, "--root", root, "--format", "json", ...args]);
+    const result = await execFileAsync(process.execPath, [
+      runner.pathname,
+      "--root",
+      root,
+      "--format",
+      "json",
+      ...args,
+    ]);
     return { code: 0, ...result, json: JSON.parse(result.stdout) };
   } catch (error) {
     if (!error.stdout) {
       throw new Error(`Oxlint runner produced no JSON. stderr: ${error.stderr || error.message}`);
     }
-    return { code: error.code, stdout: error.stdout, stderr: error.stderr, json: JSON.parse(error.stdout) };
+    return {
+      code: error.code,
+      stdout: error.stdout,
+      stderr: error.stderr,
+      json: JSON.parse(error.stdout),
+    };
   }
 }
 
@@ -152,13 +166,15 @@ test("Oxlint adapter supports warning-first adoption and documented exceptions",
     invalid: true,
     overrides: {
       enforcement: { severity: "warning", privateBooleanAttributes: ["data-busy"] },
-      exceptions: [{
-        kind: "rule",
-        rule: "css-modules/custom-property-style-only",
-        scope: "src/button.tsx",
-        match: "opacity",
-        reason: "Fixture integration owns this computed visual value.",
-      }],
+      exceptions: [
+        {
+          kind: "rule",
+          rule: "css-modules/custom-property-style-only",
+          scope: "src/button.tsx",
+          match: "opacity",
+          reason: "Fixture integration owns this computed visual value.",
+        },
+      ],
     },
   });
 
@@ -169,7 +185,10 @@ test("Oxlint adapter supports warning-first adoption and documented exceptions",
     assert.equal(result.json.status, "warnings");
     assert.ok(result.json.findings.every(({ severity }) => severity === "warning"));
     assert.equal(result.json.suppressed.length, 1);
-    assert.equal(result.json.suppressed[0].finding.ruleId, "css-modules/custom-property-style-only");
+    assert.equal(
+      result.json.suppressed[0].finding.ruleId,
+      "css-modules/custom-property-style-only",
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -8,12 +8,14 @@ const NAMED_COLORS = new Set(Object.keys(colorNames));
 
 function plugin(ruleName, message, inspect) {
   const messages = ruleMessages(ruleName, { rejected: message });
-  const rule = (enabled, options = {}) => (root, result) => {
-    if (!enabled) return;
-    inspect(root, options, (node, detail = message) => {
-      report({ ruleName, result, node, message: detail });
-    });
-  };
+  const rule =
+    (enabled, options = {}) =>
+    (root, result) => {
+      if (!enabled) return;
+      inspect(root, options, (node, detail = message) => {
+        report({ ruleName, result, node, message: detail });
+      });
+    };
   rule.ruleName = ruleName;
   rule.messages = messages;
   rule.meta = { url: `https://github.com/a-dev/skills#${ruleName}` };
@@ -56,7 +58,10 @@ const plugins = [
       root.walkRules((rule) => {
         parseSelectors(rule, (selectors) => {
           selectors.walkClasses((classNode) => {
-            if (!isGlobalClass(classNode) && !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(classNode.value)) {
+            if (
+              !isGlobalClass(classNode) &&
+              !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(classNode.value)
+            ) {
               warn(rule, `Class .${classNode.value} must use kebab-case.`);
             }
           });
@@ -85,11 +90,16 @@ const plugins = [
       if (!options.colorContractEnabled) return;
       root.walkDecls((declaration) => {
         valueParser(declaration.value).walk((node) => {
-          const rawFunction = node.type === "function" && /^(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color)$/i.test(node.value);
+          const rawFunction =
+            node.type === "function" &&
+            /^(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color)$/i.test(node.value);
           const rawHex = node.type === "word" && /^#[\da-f]{3,8}$/i.test(node.value);
           const rawNamed = node.type === "word" && NAMED_COLORS.has(node.value.toLowerCase());
           if (rawFunction || rawHex || rawNamed) {
-            warn(declaration, `Raw color ${valueParser.stringify(node)} must be routed through a semantic token.`);
+            warn(
+              declaration,
+              `Raw color ${valueParser.stringify(node)} must be routed through a semantic token.`,
+            );
           }
         });
       });
@@ -104,7 +114,10 @@ const plugins = [
         parseSelectors(rule, (selectors) => {
           selectors.walkAttributes((attribute) => {
             if (attribute.attribute === options.themeAttribute) {
-              warn(rule, `Move [${options.themeAttribute}] theme selection to ${options.themeOwner}.`);
+              warn(
+                rule,
+                `Move [${options.themeAttribute}] theme selection to ${options.themeOwner}.`,
+              );
             }
           });
         });
@@ -119,7 +132,10 @@ const plugins = [
       root.walkRules((rule) => {
         const actual = enclosingLayer(rule);
         if (actual !== options.expectedLayer) {
-          warn(rule, `Expected @layer ${options.expectedLayer}; found ${actual ? `@layer ${actual}` : "an unlayered rule"}.`);
+          warn(
+            rule,
+            `Expected @layer ${options.expectedLayer}; found ${actual ? `@layer ${actual}` : "an unlayered rule"}.`,
+          );
         }
       });
     },
@@ -150,7 +166,8 @@ const plugins = [
     "Remove !important or record a narrow, documented integration exception.",
     (root, _options, warn) => {
       root.walkDecls((declaration) => {
-        if (declaration.important) warn(declaration, `Declaration ${declaration.prop} uses !important.`);
+        if (declaration.important)
+          warn(declaration, `Declaration ${declaration.prop} uses !important.`);
       });
     },
   ),
@@ -163,10 +180,16 @@ const plugins = [
         parseSelectors(rule, (selectors) => {
           selectors.walkAttributes((attribute) => {
             if (attribute.attribute?.startsWith("aria-") && !attribute.operator) {
-              warn(rule, `[${attribute.attribute}] must select an explicit ARIA value such as \"true\" or \"false\".`);
+              warn(
+                rule,
+                `[${attribute.attribute}] must select an explicit ARIA value such as \"true\" or \"false\".`,
+              );
             }
             if (privateBooleans.has(attribute.attribute) && attribute.operator) {
-              warn(rule, `[${attribute.attribute}] is a presence selector; remove the serialized value.`);
+              warn(
+                rule,
+                `[${attribute.attribute}] is a presence selector; remove the serialized value.`,
+              );
             }
           });
         });

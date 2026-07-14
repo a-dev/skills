@@ -1,10 +1,12 @@
 {
   "name": "a-dev-skills",
   "version": "0.1.0",
-  "description": "a-dev agent's skills",
   "private": true,
+  "description": "a-dev agent's skills",
+  "license": "MIT",
   "type": "module",
   "scripts": {
+    "format": "oxfmt --write",
     "test": "npm run css:check",
     "css:check": "node --test skills/frontend/css-modules-setup/tests/*.test.mjs",
     "css:audit-fixture": "node skills/frontend/css-modules-setup/scripts/audit.mjs --root skills/frontend/css-modules-setup/fixtures/vite-react --format human --check",
@@ -22,8 +24,9 @@
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.3",
-    "color-name": "1.1.4",
+    "color-name": "2.1.0",
     "eslint": "10.7.0",
+    "oxfmt": "0.59.0",
     "oxlint": "1.74.0",
     "postcss": "8.5.19",
     "postcss-selector-parser": "7.1.4",
@@ -34,6 +37,5 @@
     "typescript": "7.0.2",
     "vite": "8.1.4",
     "vite-css-modules": "1.16.0"
-  },
-  "license": "MIT"
+  }
 }

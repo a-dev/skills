@@ -19,11 +19,15 @@ async function createFixture(host, scope) {
   for (const name of SKILLS) {
     const source = path.join(canonicalRoot, name);
     await mkdir(path.join(source, "references"), { recursive: true });
-    await writeFile(path.join(source, "SKILL.md"), `---\nname: ${name}\ndescription: fixture\n---\n\n# ${name}\n`);
+    await writeFile(
+      path.join(source, "SKILL.md"),
+      `---\nname: ${name}\ndescription: fixture\n---\n\n# ${name}\n`,
+    );
     await writeFile(path.join(source, "references", "contract.md"), "canonical\n");
-    const base = scope === "project"
-      ? path.join(projectRoot, HOSTS[host].project)
-      : path.join(home, HOSTS[host].global);
+    const base =
+      scope === "project"
+        ? path.join(projectRoot, HOSTS[host].project)
+        : path.join(home, HOSTS[host].global);
     await mkdir(base, { recursive: true });
     await cp(source, path.join(base, name), { recursive: true });
   }
@@ -50,7 +54,11 @@ test("rejects an active project/global shadow instead of assuming host precedenc
   try {
     const globalRoot = path.join(fixture.home, HOSTS.codex.global);
     await mkdir(globalRoot, { recursive: true });
-    await cp(path.join(fixture.canonicalRoot, "css-modules"), path.join(globalRoot, "css-modules"), { recursive: true });
+    await cp(
+      path.join(fixture.canonicalRoot, "css-modules"),
+      path.join(globalRoot, "css-modules"),
+      { recursive: true },
+    );
 
     const result = await verifyInstallation({ host: "codex", scope: "project", ...fixture });
     assert.equal(result.status, "ambiguous");
@@ -65,7 +73,10 @@ test("detects a historical copy outside the canonical and active directories", a
   try {
     const historical = path.join(fixture.projectRoot, "articles/css/css-modules");
     await mkdir(historical, { recursive: true });
-    await writeFile(path.join(historical, "SKILL.md"), "---\nname: css-modules\ndescription: old\n---\n");
+    await writeFile(
+      path.join(historical, "SKILL.md"),
+      "---\nname: css-modules\ndescription: old\n---\n",
+    );
 
     const result = await verifyInstallation({
       host: "claude-code",

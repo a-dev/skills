@@ -16,9 +16,13 @@ test("verifies cascade, composition, semantic themes, DOM state, and accessibili
   await expect(page.getByTestId("layer-probe")).toHaveCSS("color", "rgb(0, 128, 0)");
   await expect(page.getByTestId("composes-probe")).toHaveCSS("display", "flex");
 
-  const lightBackground = await button.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const lightBackground = await button.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
   await page.locator("html").evaluate((element) => element.setAttribute("data-theme", "dark"));
-  const darkBackground = await button.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const darkBackground = await button.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
   expect(darkBackground).not.toBe(lightBackground);
 
   await button.focus();

@@ -24,7 +24,11 @@ function expressionOf(attribute) {
 }
 
 function memberBelongsTo(node, identifiers) {
-  return node?.type === "MemberExpression" && node.object?.type === "Identifier" && identifiers.has(node.object.name);
+  return (
+    node?.type === "MemberExpression" &&
+    node.object?.type === "Identifier" &&
+    identifiers.has(node.object.name)
+  );
 }
 
 function cssModuleTracker(visitor) {
@@ -41,7 +45,9 @@ function cssModuleTracker(visitor) {
 }
 
 const noComputedKey = {
-  meta: ruleMeta({ computed: "Use an exhaustive typed lookup instead of a computed CSS Module key." }),
+  meta: ruleMeta({
+    computed: "Use an exhaustive typed lookup instead of a computed CSS Module key.",
+  }),
   create(context) {
     return cssModuleTracker((identifiers) => ({
       MemberExpression(node) {
@@ -55,7 +61,8 @@ const noComputedKey = {
 
 const noBooleanStateClass = {
   meta: ruleMeta({
-    conditional: "Expose boolean state through its native, ARIA, library, or presence-based data attribute instead of a conditional CSS Module class.",
+    conditional:
+      "Expose boolean state through its native, ARIA, library, or presence-based data attribute instead of a conditional CSS Module class.",
   }),
   create(context) {
     return cssModuleTracker((identifiers) => ({
@@ -80,14 +87,17 @@ function propertyName(property) {
   if (property.type !== "ObjectProperty" && property.type !== "Property") return undefined;
   if (property.computed) return undefined;
   if (property.key.type === "Identifier") return property.key.name;
-  if (property.key.type === "StringLiteral" || property.key.type === "Literal") return property.key.value;
+  if (property.key.type === "StringLiteral" || property.key.type === "Literal")
+    return property.key.value;
   return undefined;
 }
 
 const customPropertyStyleOnly = {
   meta: ruleMeta({
-    property: "Move the visual style {{name}} to CSS; application-owned runtime values must use the configured custom-property helper.",
-    expression: "Move {{expression}} to CSS or record a narrow integration exception for this library-owned style object.",
+    property:
+      "Move the visual style {{name}} to CSS; application-owned runtime values must use the configured custom-property helper.",
+    expression:
+      "Move {{expression}} to CSS or record a narrow integration exception for this library-owned style object.",
   }),
   create(context) {
     return {
@@ -106,7 +116,9 @@ const customPropertyStyleOnly = {
           context.report({
             node: expression ?? node,
             messageId: "expression",
-            data: { expression: expression ? context.sourceCode.getText(expression) : "this visual style" },
+            data: {
+              expression: expression ? context.sourceCode.getText(expression) : "this visual style",
+            },
           });
           return;
         }
@@ -135,12 +147,16 @@ const DUPLICATE_STATE = new Map([
 ]);
 
 const noDuplicateState = {
-  meta: ruleMeta({ duplicate: "Style {{semantic}} directly; {{privateState}} duplicates the same semantic state." }),
+  meta: ruleMeta({
+    duplicate: "Style {{semantic}} directly; {{privateState}} duplicates the same semantic state.",
+  }),
   create(context) {
     return {
       JSXOpeningElement(node) {
         const attributes = new Map(
-          node.attributes.map((attribute) => [jsxName(attribute), attribute]).filter(([name]) => name),
+          node.attributes
+            .map((attribute) => [jsxName(attribute), attribute])
+            .filter(([name]) => name),
         );
         for (const [privateState, semanticSources] of DUPLICATE_STATE) {
           if (!attributes.has(privateState)) continue;
@@ -159,25 +175,27 @@ const noDuplicateState = {
 };
 
 function isUndefinedLike(node) {
-  return (node?.type === "Identifier" && node.name === "undefined") ||
+  return (
+    (node?.type === "Identifier" && node.name === "undefined") ||
     node?.type === "NullLiteral" ||
-    (node?.type === "Literal" && node.value === null);
+    (node?.type === "Literal" && node.value === null)
+  );
 }
 
 function isPresenceExpression(node) {
   return (
-    node?.type === "LogicalExpression" &&
-    ["||", "??"].includes(node.operator) &&
-    isUndefinedLike(node.right)
-  ) || (
-    node?.type === "ConditionalExpression" &&
-    (isUndefinedLike(node.consequent) || isUndefinedLike(node.alternate))
+    (node?.type === "LogicalExpression" &&
+      ["||", "??"].includes(node.operator) &&
+      isUndefinedLike(node.right)) ||
+    (node?.type === "ConditionalExpression" &&
+      (isUndefinedLike(node.consequent) || isUndefinedLike(node.alternate)))
   );
 }
 
 const dataBooleanPresence = {
   meta: ruleMeta({
-    presence: "Render {{name}} as a presence attribute: omit it when false instead of serializing a boolean value.",
+    presence:
+      "Render {{name}} as a presence attribute: omit it when false instead of serializing a boolean value.",
   }),
   create(context) {
     return {

@@ -31,7 +31,12 @@ export function evaluateResponses(cases, responses) {
         if (normalized.includes(signal.toLowerCase())) failures.push(`forbidden signal: ${signal}`);
       }
     }
-    return { id: evaluation.id, category: evaluation.category, passed: failures.length === 0, failures };
+    return {
+      id: evaluation.id,
+      category: evaluation.category,
+      passed: failures.length === 0,
+      failures,
+    };
   });
 
   const categories = Object.values(
@@ -60,7 +65,8 @@ export async function runEvaluation({ casesPath, responsesPath } = {}) {
 
 async function main() {
   const responsesIndex = process.argv.indexOf("--responses");
-  const responsesPath = responsesIndex >= 0 ? path.resolve(process.argv[responsesIndex + 1]) : undefined;
+  const responsesPath =
+    responsesIndex >= 0 ? path.resolve(process.argv[responsesIndex + 1]) : undefined;
   const result = await runEvaluation({ responsesPath });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   process.exitCode = result.status === "passed" ? 0 : 1;

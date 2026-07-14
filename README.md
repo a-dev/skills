@@ -1,16 +1,33 @@
 # Skills
 
-The canonical sources live in this repository under `skills/`.
+The canonical sources live under `skills/`, organized by domain. Each domain
+can contain one or more related skill families.
 
-## Install
+## Catalog
 
-List the available skills before installing:
+### Frontend
+
+#### CSS Modules
+
+| Skill                                                             | Invocation                   | Purpose                                                                   |
+| ----------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------- |
+| [`css-modules-setup`](skills/frontend/css-modules-setup/SKILL.md) | manual                       | read-only audit plus explicit bootstrap, align, migrate, and verify modes |
+| [`css-modules`](skills/frontend/css-modules/SKILL.md)             | model-invoked after adoption | profile-driven per-edit styling discipline                                |
+
+Other domains and skill families belong alongside `frontend` as the
+repository grows.
+
+## Install skills
+
+List all available skills before choosing one or more to install:
 
 ```sh
 npx skills add a-dev/skills --list
 ```
 
-Install the two CSS Modules skills into the current project for a selected host:
+### Frontend CSS Modules
+
+Install both CSS Modules skills into the current project for a selected host:
 
 ```sh
 npx skills add a-dev/skills \
@@ -34,12 +51,7 @@ Invoke `css-modules-setup` explicitly through the host's skill mechanism. `disab
 
 The tested host instructions live in [`host-codex.md`](skills/frontend/css-modules-setup/adapters/host-codex.md) and [`host-claude-code.md`](skills/frontend/css-modules-setup/adapters/host-claude-code.md). Each includes an executable discovery check that rejects drifted or shadowing copies. The CLI's path checks are covered by fixtures; inspecting the host's actual catalog is still required.
 
-## Typed CSS Modules harness
-
-| Skill                                                             | Invocation                   | Purpose                                                                   |
-| ----------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------- |
-| [`css-modules-setup`](skills/frontend/css-modules-setup/SKILL.md) | manual                       | read-only audit plus explicit bootstrap, align, migrate, and verify modes |
-| [`css-modules`](skills/frontend/css-modules/SKILL.md)             | model-invoked after adoption | profile-driven per-edit styling discipline                                |
+## Frontend CSS Modules harness
 
 The [Vite + React adapter](skills/frontend/css-modules-setup/adapters/vite-react.md) is the tested reference. Other stacks need their own adapter and equivalent declaration, contract, build, and browser fixtures before they should be described as supported.
 

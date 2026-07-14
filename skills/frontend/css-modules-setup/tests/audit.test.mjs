@@ -65,7 +65,11 @@ async function createFixture({
   await write(
     root,
     "tsconfig.json",
-    JSON.stringify({ compilerOptions: { paths: { "#shared": ["./src/styles/index.ts"], "#shared/*": ["./src/styles/*"] } } }),
+    JSON.stringify({
+      compilerOptions: {
+        paths: { "#shared": ["./src/styles/index.ts"], "#shared/*": ["./src/styles/*"] },
+      },
+    }),
   );
   await write(
     root,
@@ -86,17 +90,17 @@ export default {
 };
 `,
   );
-  await write(
-    root,
-    "src/styles/global.css",
-    `@layer ${layerOrder.join(", ")};\n`,
-  );
+  await write(root, "src/styles/global.css", `@layer ${layerOrder.join(", ")};\n`);
   await write(
     root,
     "src/styles/atoms.module.css",
     "@layer foundation { .cluster { display: flex; } }\n",
   );
-  await write(root, "src/styles/index.ts", 'export { default as atoms } from "./atoms.module.css";\n');
+  await write(
+    root,
+    "src/styles/index.ts",
+    'export { default as atoms } from "./atoms.module.css";\n',
+  );
   await write(root, "src/main.tsx", 'import "#shared/global.css";\n');
   if (ci !== "missing") {
     const steps =
@@ -173,7 +177,9 @@ test("accepts a differently named coherent topology and does not write", async (
     assert.deepEqual(after, before);
     assert.equal(result.findings.find(({ id }) => id === "layers.order")?.status, "aligned");
     assert.equal(result.findings.find(({ id }) => id === "layers.module.atoms")?.status, "aligned");
-    assert.ok(!result.findings.some(({ status }) => ["missing", "drifted", "ambiguous"].includes(status)));
+    assert.ok(
+      !result.findings.some(({ status }) => ["missing", "drifted", "ambiguous"].includes(status)),
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -189,7 +195,11 @@ test("accepts the article reference layer topology", async () => {
       selectedProfile.sharedApi.modules[0].layer = "atoms";
     });
     await write(root, "src/styles/global.css", "@layer reset, base, atoms, ui;\n");
-    await write(root, "src/styles/atoms.module.css", "@layer atoms { .cluster { display: flex; } }\n");
+    await write(
+      root,
+      "src/styles/atoms.module.css",
+      "@layer atoms { .cluster { display: flex; } }\n",
+    );
 
     const result = await auditProject({ root });
     assert.equal(result.findings.find(({ id }) => id === "layers.order")?.status, "aligned");
@@ -265,10 +275,7 @@ test("requires a profile to choose between multiple Vite applications", async ()
     const result = await auditProject({ root });
 
     assert.equal(result.status, "ambiguous");
-    assert.equal(
-      result.findings.find(({ id }) => id === "project.app-root")?.status,
-      "ambiguous",
-    );
+    assert.equal(result.findings.find(({ id }) => id === "project.app-root")?.status, "ambiguous");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -325,10 +332,7 @@ test("reports ownership drift separately from the layer declared in CSS", async 
     });
     const result = await auditProject({ root });
 
-    assert.equal(
-      result.findings.find(({ id }) => id === "layers.module.atoms")?.status,
-      "aligned",
-    );
+    assert.equal(result.findings.find(({ id }) => id === "layers.module.atoms")?.status, "aligned");
     assert.equal(
       result.findings.find(({ id }) => id === "layers.ownership.atoms")?.status,
       "drifted",
@@ -380,11 +384,7 @@ test("reports palette-token use inside a component module", async () => {
       "src/styles/global.css",
       '@layer foundation, components;\nhtml { color-scheme: light dark; }\nhtml[data-theme="light"] { color-scheme: light; }\nhtml[data-theme="dark"] { color-scheme: dark; }\n',
     );
-    await write(
-      root,
-      "src/card.module.css",
-      ".root { color: var(--color-blue-500); }\n",
-    );
+    await write(root, "src/card.module.css", ".root { color: var(--color-blue-500); }\n");
 
     const result = await auditProject({ root });
 

@@ -14,16 +14,7 @@ const VITE_CONFIG_NAMES = [
   "vite.config.cts",
 ];
 
-const SOURCE_EXTENSIONS = new Set([
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mts",
-  ".mjs",
-  ".cts",
-  ".cjs",
-]);
+const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".mjs", ".cts", ".cjs"]);
 
 const VERSION_CONTRACT = JSON.parse(
   await readFile(new URL("../versions.json", import.meta.url), "utf8"),
@@ -164,10 +155,14 @@ export function validateProfile(profile) {
     if (
       module?.publicClasses !== undefined &&
       (!Array.isArray(module.publicClasses) ||
-        module.publicClasses.some((className) => typeof className !== "string" || className.length === 0) ||
+        module.publicClasses.some(
+          (className) => typeof className !== "string" || className.length === 0,
+        ) ||
         new Set(module.publicClasses).size !== module.publicClasses.length)
     ) {
-      errors.push(`sharedApi.modules[${index}].publicClasses must contain unique non-empty strings`);
+      errors.push(
+        `sharedApi.modules[${index}].publicClasses must contain unique non-empty strings`,
+      );
     }
 
     if (Array.isArray(order) && !order.includes(module?.layer)) {
@@ -220,11 +215,7 @@ export function validateProfile(profile) {
     errors.push("custom local modules require a document");
   }
 
-  const admissionStrategies = new Set([
-    "project-review",
-    "second-semantic-consumer",
-    "explicit",
-  ]);
+  const admissionStrategies = new Set(["project-review", "second-semantic-consumer", "explicit"]);
   if (!admissionStrategies.has(profile?.sharedApi?.admissionRule?.strategy)) {
     errors.push("sharedApi.admissionRule.strategy is invalid");
   }
@@ -240,10 +231,7 @@ export function validateProfile(profile) {
   if (!compositionModes.has(profile?.composition?.mode)) {
     errors.push("composition.mode is invalid");
   }
-  if (
-    profile?.composition?.mode === "mixed-with-rule" &&
-    !profile.composition.rule
-  ) {
+  if (profile?.composition?.mode === "mixed-with-rule" && !profile.composition.rule) {
     errors.push("mixed composition requires a rule");
   }
 
@@ -271,15 +259,14 @@ export function validateProfile(profile) {
     }
   }
 
-  if (!profile.commands || typeof profile.commands !== "object" || Array.isArray(profile.commands)) {
+  if (
+    !profile.commands ||
+    typeof profile.commands !== "object" ||
+    Array.isArray(profile.commands)
+  ) {
     errors.push("commands must be an object");
   } else {
-    const cssCommandKeys = new Set([
-      "css:generate",
-      "css:types",
-      "css:check",
-      "css:verify",
-    ]);
+    const cssCommandKeys = new Set(["css:generate", "css:types", "css:check", "css:verify"]);
     for (const key of Object.keys(profile.commands)) {
       if (!cssCommandKeys.has(key)) {
         errors.push(`commands.${key} is not a CSS harness command`);
@@ -290,7 +277,11 @@ export function validateProfile(profile) {
   }
 
   if (profile.enforcement !== undefined) {
-    if (!profile.enforcement || typeof profile.enforcement !== "object" || Array.isArray(profile.enforcement)) {
+    if (
+      !profile.enforcement ||
+      typeof profile.enforcement !== "object" ||
+      Array.isArray(profile.enforcement)
+    ) {
       errors.push("enforcement must be an object");
     } else {
       if (!new Set(["warning", "error"]).has(profile.enforcement.severity)) {
@@ -316,7 +307,8 @@ export function validateProfile(profile) {
   for (const [index, exception] of (profile.exceptions ?? []).entries()) {
     if (exception.kind === "rule") {
       requireString(exception.rule, `exceptions[${index}].rule`);
-      if (exception.match !== undefined) requireString(exception.match, `exceptions[${index}].match`);
+      if (exception.match !== undefined)
+        requireString(exception.match, `exceptions[${index}].match`);
     }
   }
 
@@ -378,7 +370,7 @@ async function detectPackageManager(root) {
         "No package-manager marker found",
         undefined,
         undefined,
-        'node -p "require(\'./package.json\').packageManager"',
+        "node -p \"require('./package.json').packageManager\"",
       );
 }
 
@@ -475,7 +467,10 @@ async function findViteConfigs(root) {
 
 function normalizeLayerOrder(css) {
   const declarations = [...css.matchAll(/@layer\s+([^;{]+);/g)].map((match) =>
-    match[1].split(",").map((name) => name.trim()).filter(Boolean),
+    match[1]
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean),
   );
 
   return declarations;
@@ -532,9 +527,7 @@ async function collectCiFiles(root) {
 function patchCssModulesIdentifiers(source) {
   const identifiers = new Set();
 
-  for (const match of source.matchAll(
-    /import\s*\{([^}]*)\}\s*from\s*["']vite-css-modules["']/g,
-  )) {
+  for (const match of source.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']vite-css-modules["']/g)) {
     for (const specifier of match[1].split(",")) {
       const alias = specifier.trim().match(/^patchCssModules(?:\s+as\s+([\w$]+))?$/);
       if (alias) {
@@ -546,7 +539,10 @@ function patchCssModulesIdentifiers(source) {
   return [...identifiers];
 }
 
-export async function auditProject({ root = process.cwd(), profilePath = ".agents/css-modules.json" } = {}) {
+export async function auditProject({
+  root = process.cwd(),
+  profilePath = ".agents/css-modules.json",
+} = {}) {
   const resolvedRoot = path.resolve(root);
   const findings = [await detectPackageManager(resolvedRoot)];
   const resolvedProfile = resolveInside(resolvedRoot, profilePath);
@@ -782,7 +778,13 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
   const matchingOrder = declaredOrders.some((order) => sameArray(order, profile.layers.order));
   findings.push(
     matchingOrder
-      ? finding("layers.order", "aligned", "Global layer order matches the profile", profile.layers.order, profile.layers.order)
+      ? finding(
+          "layers.order",
+          "aligned",
+          "Global layer order matches the profile",
+          profile.layers.order,
+          profile.layers.order,
+        )
       : finding(
           "layers.order",
           declaredOrders.length === 0 ? "missing" : "drifted",
@@ -810,7 +812,7 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
             "drifted",
             "Shared module does not declare its profiled layer",
             module.layer,
-        ),
+          ),
     );
 
     const matchingOwners = profile.layers.ownership.filter(({ glob }) =>
@@ -906,7 +908,8 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
       const specifier = match[1];
       const resolvesToGlobal =
         specifier === globalSpecifier ||
-        (specifier.startsWith(".") && path.resolve(path.dirname(sourceFile), specifier) === globalPath);
+        (specifier.startsWith(".") &&
+          path.resolve(path.dirname(sourceFile), specifier) === globalPath);
 
       if (resolvesToGlobal) {
         globalImportCount += 1;
@@ -962,7 +965,11 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
 
     findings.push(
       paletteTokens.size > 0
-        ? finding("colors.palette-definitions", "aligned", `${paletteTokens.size} palette tokens found`)
+        ? finding(
+            "colors.palette-definitions",
+            "aligned",
+            `${paletteTokens.size} palette tokens found`,
+          )
         : finding("colors.palette-definitions", "missing", "No palette token definitions found"),
     );
 
@@ -979,13 +986,14 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
         : finding("colors.semantic-mapping", "missing", "No light-dark semantic mapping found"),
     );
 
-    const moduleFiles = await walkMatchingFiles(
-      path.join(appRoot, "src"),
-      (filePath) => filePath.endsWith(".module.css"),
+    const moduleFiles = await walkMatchingFiles(path.join(appRoot, "src"), (filePath) =>
+      filePath.endsWith(".module.css"),
     );
     const paletteViolations = [];
     const themeSelectorViolations = [];
-    const themeSelector = new RegExp(`\\[${escapeRegExp(profile.colorTokens.themeAttribute)}(?:\\s*=|\\])`);
+    const themeSelector = new RegExp(
+      `\\[${escapeRegExp(profile.colorTokens.themeAttribute)}(?:\\s*=|\\])`,
+    );
 
     for (const moduleFile of moduleFiles) {
       const css = await readText(moduleFile);
@@ -1015,7 +1023,11 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
     );
     findings.push(
       themeSelectorViolations.length === 0
-        ? finding("colors.theme-ownership", "aligned", "Component modules do not own theme selectors")
+        ? finding(
+            "colors.theme-ownership",
+            "aligned",
+            "Component modules do not own theme selectors",
+          )
         : finding(
             "colors.theme-ownership",
             "drifted",
@@ -1028,7 +1040,8 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
 
   const commandEntries = Object.entries(profile.commands);
   findings.push(
-    commandEntries.length > 0 && commandEntries.every(([, command]) => typeof command === "string" && command.length > 0)
+    commandEntries.length > 0 &&
+      commandEntries.every(([, command]) => typeof command === "string" && command.length > 0)
       ? finding("commands.profile", "aligned", `${commandEntries.length} commands recorded`)
       : finding("commands.profile", "missing", "No usable CSS-harness commands recorded"),
   );
@@ -1071,9 +1084,12 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
               "drifted",
               "CI must run the recorded CSS generation command before the CSS type command",
               [generateCommand, typesCommand],
-              matchingFile.text.includes(typesCommand) && matchingFile.text.includes(generateCommand)
+              matchingFile.text.includes(typesCommand) &&
+                matchingFile.text.includes(generateCommand)
                 ? [typesCommand, generateCommand]
-                : [generateCommand, typesCommand].filter((command) => matchingFile.text.includes(command)),
+                : [generateCommand, typesCommand].filter((command) =>
+                    matchingFile.text.includes(command),
+                  ),
             ),
       );
     }
@@ -1208,7 +1224,9 @@ async function main() {
 
     const result = await auditProject(options);
     process.stdout.write(
-      options.format === "json" ? `${JSON.stringify(result, null, 2)}\n` : `${formatHuman(result)}\n`,
+      options.format === "json"
+        ? `${JSON.stringify(result, null, 2)}\n`
+        : `${formatHuman(result)}\n`,
     );
     process.exitCode = exitCodeFor(result);
   } catch (error) {

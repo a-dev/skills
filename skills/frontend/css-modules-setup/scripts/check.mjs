@@ -17,7 +17,14 @@ import stylelintPlugins, { stylelintRuleIds } from "../harness/stylelint-plugin.
 import { validateProfile } from "./audit.mjs";
 
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".mts", ".cjs", ".cts"]);
-const SKIPPED_DIRECTORIES = new Set([".git", "node_modules", "dist", "build", "coverage", "test-results"]);
+const SKIPPED_DIRECTORIES = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "build",
+  "coverage",
+  "test-results",
+]);
 
 async function exists(filePath) {
   try {
@@ -39,7 +46,9 @@ function resolveInside(root, relativePath) {
 
 async function walk(directory, predicate, output = []) {
   if (!(await exists(directory))) return output;
-  const entries = (await readdir(directory, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name));
+  const entries = (await readdir(directory, { withFileTypes: true })).sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
   for (const entry of entries) {
     if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
     const entryPath = path.join(directory, entry.name);
@@ -112,46 +121,59 @@ function expectedLayer(profile, relativeFile) {
 }
 
 async function runEslint(root, profile, severity) {
-  const sourceFiles = await walk(resolveInside(root, profile.appRoot), (file) => SOURCE_EXTENSIONS.has(path.extname(file)) && !file.endsWith(".d.ts"));
+  const sourceFiles = await walk(
+    resolveInside(root, profile.appRoot),
+    (file) => SOURCE_EXTENSIONS.has(path.extname(file)) && !file.endsWith(".d.ts"),
+  );
   if (sourceFiles.length === 0) return [];
   const ruleSeverity = severity === "error" ? 2 : 1;
   const eslint = new ESLint({
     cwd: root,
     overrideConfigFile: true,
-    overrideConfig: [{
-      files: ["**/*.{js,jsx,ts,tsx,mjs,mts,cjs,cts}"],
-      languageOptions: {
-        parser: babelParser,
-        parserOptions: {
-          requireConfigFile: false,
-          babelOptions: { parserOpts: { plugins: ["jsx", "typescript"] } },
+    overrideConfig: [
+      {
+        files: ["**/*.{js,jsx,ts,tsx,mjs,mts,cjs,cts}"],
+        languageOptions: {
+          parser: babelParser,
+          parserOptions: {
+            requireConfigFile: false,
+            babelOptions: { parserOpts: { plugins: ["jsx", "typescript"] } },
+          },
+        },
+        plugins: { "css-modules": eslintPlugin },
+        rules: Object.fromEntries(eslintRuleIds.map((id) => [`css-modules/${id}`, ruleSeverity])),
+        settings: {
+          cssModules: {
+            classNamesHelper: profile.helpers.classNames,
+            cssVariablesHelper: profile.helpers.cssVariables,
+            privateBooleanAttributes: profile.enforcement?.privateBooleanAttributes ?? [
+              "data-loading",
+            ],
+          },
         },
       },
-      plugins: { "css-modules": eslintPlugin },
-      rules: Object.fromEntries(eslintRuleIds.map((id) => [`css-modules/${id}`, ruleSeverity])),
-      settings: {
-        cssModules: {
-          classNamesHelper: profile.helpers.classNames,
-          cssVariablesHelper: profile.helpers.cssVariables,
-          privateBooleanAttributes: profile.enforcement?.privateBooleanAttributes ?? ["data-loading"],
-        },
-      },
-    }],
+    ],
   });
   const results = await eslint.lintFiles(sourceFiles);
-  return results.flatMap((result) => result.messages.map((message) => finding({
-    engine: "eslint",
-    ruleId: message.ruleId ?? "eslint/parse-error",
-    file: path.relative(root, result.filePath).split(path.sep).join("/"),
-    line: message.line,
-    column: message.column,
-    message: message.message,
-    severity: message.severity === 2 ? "error" : "warning",
-  })));
+  return results.flatMap((result) =>
+    result.messages.map((message) =>
+      finding({
+        engine: "eslint",
+        ruleId: message.ruleId ?? "eslint/parse-error",
+        file: path.relative(root, result.filePath).split(path.sep).join("/"),
+        line: message.line,
+        column: message.column,
+        message: message.message,
+        severity: message.severity === 2 ? "error" : "warning",
+      }),
+    ),
+  );
 }
 
 async function runStylelint(root, profile, severity, palette) {
-  const cssFiles = await walk(resolveInside(root, profile.appRoot), (file) => file.endsWith(".module.css"));
+  const cssFiles = await walk(resolveInside(root, profile.appRoot), (file) =>
+    file.endsWith(".module.css"),
+  );
   const findings = [];
   for (const file of cssFiles) {
     const relativeFile = path.relative(root, file).split(path.sep).join("/");
@@ -173,15 +195,17 @@ async function runStylelint(root, profile, severity, palette) {
       },
     });
     for (const warning of result.results[0]?.warnings ?? []) {
-      findings.push(finding({
-        engine: "stylelint",
-        ruleId: warning.rule,
-        file: relativeFile,
-        line: warning.line,
-        column: warning.column,
-        message: warning.text.replace(new RegExp(`\\s+\\(${escapeRegExp(warning.rule)}\\)$`), ""),
-        severity: warning.severity,
-      }));
+      findings.push(
+        finding({
+          engine: "stylelint",
+          ruleId: warning.rule,
+          file: relativeFile,
+          line: warning.line,
+          column: warning.column,
+          message: warning.text.replace(new RegExp(`\\s+\\(${escapeRegExp(warning.rule)}\\)$`), ""),
+          severity: warning.severity,
+        }),
+      );
     }
   }
   return findings;
@@ -209,7 +233,9 @@ function classDefinitions(css) {
   const classes = new Set();
   css.walkRules((rule) => {
     try {
-      selectorParser((selectors) => selectors.walkClasses((node) => classes.add(node.value))).processSync(rule.selector);
+      selectorParser((selectors) =>
+        selectors.walkClasses((node) => classes.add(node.value)),
+      ).processSync(rule.selector);
     } catch {
       // Stylelint reports malformed selectors.
     }
@@ -220,7 +246,9 @@ function classDefinitions(css) {
 function resolveComposesSpecifier(profile, specifier) {
   if (specifier === profile.alias.bare) return profile.sharedApi.entryPoint;
   const prefix = `${profile.alias.bare}/`;
-  return specifier.startsWith(prefix) ? path.join(profile.stylesRoot, specifier.slice(prefix.length)) : null;
+  return specifier.startsWith(prefix)
+    ? path.join(profile.stylesRoot, specifier.slice(prefix.length))
+    : null;
 }
 
 function exportedNames(source, filePath) {
@@ -250,17 +278,23 @@ function exportedNames(source, filePath) {
 
 async function runContracts(root, profile, severity) {
   const findings = [];
-  const add = (ruleId, file, node, message) => findings.push(finding({
-    engine: "contract",
-    ruleId,
-    file,
-    ...sourcePosition(node),
-    message,
-    severity,
-  }));
+  const add = (ruleId, file, node, message) =>
+    findings.push(
+      finding({
+        engine: "contract",
+        ruleId,
+        file,
+        ...sourcePosition(node),
+        message,
+        severity,
+      }),
+    );
   const semanticTokens = await semanticDefinitions(root, profile);
-  const colorProperty = /^(?:color|background-color|border(?:-(?:block|inline))?(?:-(?:start|end))?-color|outline-color|text-decoration-color|caret-color|accent-color|fill|stroke)$/;
-  const componentModules = await walk(resolveInside(root, profile.appRoot), (file) => file.endsWith(".module.css"));
+  const colorProperty =
+    /^(?:color|background-color|border(?:-(?:block|inline))?(?:-(?:start|end))?-color|outline-color|text-decoration-color|caret-color|accent-color|fill|stroke)$/;
+  const componentModules = await walk(resolveInside(root, profile.appRoot), (file) =>
+    file.endsWith(".module.css"),
+  );
   const modulePaths = new Set(componentModules.map((file) => path.resolve(file)));
 
   for (const file of componentModules) {
@@ -276,7 +310,12 @@ async function runContracts(root, profile, severity) {
             (node.value.startsWith("--color-") || colorProperty.test(declaration.prop)) &&
             !semanticTokens.has(node.value)
           ) {
-            add("css-modules/semantic-token-resolves", relativeFile, declaration, `Semantic color token ${node.value} is not defined by the recorded color contract.`);
+            add(
+              "css-modules/semantic-token-resolves",
+              relativeFile,
+              declaration,
+              `Semantic color token ${node.value} is not defined by the recorded color contract.`,
+            );
           }
         });
       });
@@ -286,7 +325,12 @@ async function runContracts(root, profile, severity) {
       if (!match) return;
       const target = resolveComposesSpecifier(profile, match[1]);
       if (!target || !modulePaths.has(resolveInside(root, target))) {
-        add("css-modules/composes-path-resolves", relativeFile, declaration, `External composes path ${match[1]} does not resolve through the recorded style alias.`);
+        add(
+          "css-modules/composes-path-resolves",
+          relativeFile,
+          declaration,
+          `External composes path ${match[1]} does not resolve through the recorded style alias.`,
+        );
       }
     });
   }
@@ -296,7 +340,12 @@ async function runContracts(root, profile, severity) {
   const entryExports = entrySource ? exportedNames(entrySource, entryPath) : new Set();
   for (const module of profile.sharedApi.modules) {
     if (module.export && !entryExports.has(module.export)) {
-      add("css-modules/shared-entry-export", profile.sharedApi.entryPoint, null, `Shared entry point must export ${module.export} for ${module.name}.`);
+      add(
+        "css-modules/shared-entry-export",
+        profile.sharedApi.entryPoint,
+        null,
+        `Shared entry point must export ${module.export} for ${module.name}.`,
+      );
     }
     if (!module.publicClasses) continue;
     const modulePath = resolveInside(root, module.path);
@@ -305,12 +354,22 @@ async function runContracts(root, profile, severity) {
     const actualClasses = classDefinitions(css);
     for (const className of actualClasses) {
       if (!module.publicClasses.includes(className)) {
-        add("css-modules/shared-public-class", module.path, css, `Shared class .${className} is not listed in sharedApi.modules.${module.name}.publicClasses.`);
+        add(
+          "css-modules/shared-public-class",
+          module.path,
+          css,
+          `Shared class .${className} is not listed in sharedApi.modules.${module.name}.publicClasses.`,
+        );
       }
     }
     for (const className of module.publicClasses) {
       if (!actualClasses.has(className)) {
-        add("css-modules/shared-public-class", module.path, css, `Recorded public class .${className} is absent from ${module.path}.`);
+        add(
+          "css-modules/shared-public-class",
+          module.path,
+          css,
+          `Recorded public class .${className} is absent from ${module.path}.`,
+        );
       }
     }
   }
@@ -318,36 +377,58 @@ async function runContracts(root, profile, severity) {
 }
 
 function matchesException(item, exception) {
-  return exception.kind === "rule" &&
+  return (
+    exception.kind === "rule" &&
     exception.rule === item.ruleId &&
     matchesGlob(item.file, exception.scope) &&
-    (!exception.match || item.message.includes(exception.match));
+    (!exception.match || item.message.includes(exception.match))
+  );
 }
 
-export async function checkProject({ root = process.cwd(), profilePath = ".agents/css-modules.json", severity } = {}) {
+export async function checkProject({
+  root = process.cwd(),
+  profilePath = ".agents/css-modules.json",
+  severity,
+} = {}) {
   const resolvedRoot = path.resolve(root);
   const profile = await readProfile(resolvedRoot, profilePath);
   const selectedSeverity = severity ?? profile.enforcement?.severity ?? "error";
-  if (!["warning", "error"].includes(selectedSeverity)) throw new Error("severity must be warning or error");
+  if (!["warning", "error"].includes(selectedSeverity))
+    throw new Error("severity must be warning or error");
   const palette = await paletteTokens(resolvedRoot, profile);
   const rawFindings = [
     ...(await runEslint(resolvedRoot, profile, selectedSeverity)),
     ...(await runStylelint(resolvedRoot, profile, selectedSeverity, palette)),
     ...(await runContracts(resolvedRoot, profile, selectedSeverity)),
-  ].sort((left, right) =>
-    left.file.localeCompare(right.file) || left.line - right.line || left.column - right.column || left.ruleId.localeCompare(right.ruleId),
+  ].sort(
+    (left, right) =>
+      left.file.localeCompare(right.file) ||
+      left.line - right.line ||
+      left.column - right.column ||
+      left.ruleId.localeCompare(right.ruleId),
   );
   const findings = [];
   const suppressed = [];
   for (const item of rawFindings) {
-    const exception = (profile.exceptions ?? []).find((candidate) => matchesException(item, candidate));
+    const exception = (profile.exceptions ?? []).find((candidate) =>
+      matchesException(item, candidate),
+    );
     if (exception) suppressed.push({ finding: item, exception });
     else findings.push(item);
   }
   const status = findings.some(({ severity: itemSeverity }) => itemSeverity === "error")
     ? "failed"
-    : findings.length > 0 ? "warnings" : "passed";
-  return { root: resolvedRoot, profilePath, severity: selectedSeverity, status, findings, suppressed };
+    : findings.length > 0
+      ? "warnings"
+      : "passed";
+  return {
+    root: resolvedRoot,
+    profilePath,
+    severity: selectedSeverity,
+    status,
+    findings,
+    suppressed,
+  };
 }
 
 export function exitCodeForCheck(result) {
@@ -360,7 +441,12 @@ function runCommand(command, cwd) {
     child.on("error", reject);
     child.on("exit", (code, signal) => {
       if (code === 0) resolve();
-      else reject(new Error(`Command failed${signal ? ` with ${signal}` : ` with exit code ${code}`}: ${command}`));
+      else
+        reject(
+          new Error(
+            `Command failed${signal ? ` with ${signal}` : ` with exit code ${code}`}: ${command}`,
+          ),
+        );
     });
   });
 }
@@ -373,16 +459,24 @@ export async function runProfileCommands({ root, profilePath = ".agents/css-modu
 export function formatCheck(result) {
   const lines = [`CSS Modules source checks: ${result.root}`, ""];
   for (const item of result.findings) {
-    lines.push(`${item.severity.toUpperCase()} ${item.file}:${item.line}:${item.column} ${item.ruleId} ${item.message}`);
+    lines.push(
+      `${item.severity.toUpperCase()} ${item.file}:${item.line}:${item.column} ${item.ruleId} ${item.message}`,
+    );
   }
   if (result.findings.length === 0) lines.push("No violations.");
-  if (result.suppressed.length > 0) lines.push("", `Suppressed by documented exceptions: ${result.suppressed.length}`);
+  if (result.suppressed.length > 0)
+    lines.push("", `Suppressed by documented exceptions: ${result.suppressed.length}`);
   lines.push("", `Result: ${result.status}`);
   return lines.join("\n");
 }
 
 function parseArgs(argv) {
-  const options = { root: process.cwd(), profilePath: ".agents/css-modules.json", format: "human", runDeclarations: false };
+  const options = {
+    root: process.cwd(),
+    profilePath: ".agents/css-modules.json",
+    format: "human",
+    runDeclarations: false,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--root") options.root = argv[++index];
@@ -418,7 +512,11 @@ async function main() {
     }
     if (options.runDeclarations) await runProfileCommands(options);
     const result = await checkProject(options);
-    process.stdout.write(options.format === "json" ? `${JSON.stringify(result, null, 2)}\n` : `${formatCheck(result)}\n`);
+    process.stdout.write(
+      options.format === "json"
+        ? `${JSON.stringify(result, null, 2)}\n`
+        : `${formatCheck(result)}\n`,
+    );
     process.exitCode = exitCodeForCheck(result);
   } catch (error) {
     process.stderr.write(`CSS Modules checks failed: ${error.message}\n`);

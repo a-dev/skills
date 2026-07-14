@@ -185,7 +185,10 @@ test("bootstrap plans complete profile-driven files, applies once, and is idempo
     assert.ok(plan.changes.every(({ content }) => !content.includes("{{")));
 
     const result = await applySetupPlan(plan);
-    assert.deepEqual(result.touched, plan.changes.map(({ path: filePath }) => filePath));
+    assert.deepEqual(
+      result.touched,
+      plan.changes.map(({ path: filePath }) => filePath),
+    );
 
     const secondPlan = await planSetup({
       root,
@@ -211,7 +214,11 @@ test("bootstrap preserves existing package scripts, plugins, and production comp
   const root = await createGreenfieldFixture();
 
   try {
-    await write(root, "src/widgets/button.tsx", "export function Button() { return <button />; }\n");
+    await write(
+      root,
+      "src/widgets/button.tsx",
+      "export function Button() { return <button />; }\n",
+    );
     const packageBefore = await readFile(path.join(root, "package.json"), "utf8");
     const viteBefore = await readFile(path.join(root, "vite.config.ts"), "utf8");
     const componentBefore = await readFile(path.join(root, "src/widgets/button.tsx"), "utf8");
@@ -226,7 +233,10 @@ test("bootstrap preserves existing package scripts, plugins, and production comp
 
     assert.equal(await readFile(path.join(root, "package.json"), "utf8"), packageBefore);
     assert.equal(await readFile(path.join(root, "vite.config.ts"), "utf8"), viteBefore);
-    assert.equal(await readFile(path.join(root, "src/widgets/button.tsx"), "utf8"), componentBefore);
+    assert.equal(
+      await readFile(path.join(root, "src/widgets/button.tsx"), "utf8"),
+      componentBefore,
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -246,9 +256,10 @@ test("bootstrap stops on a different existing file instead of overwriting it", a
     });
 
     assert.equal(plan.status, "conflict");
-    assert.deepEqual(plan.conflicts.map(({ path: filePath }) => filePath), [
-      "src/foundation/flow.module.css",
-    ]);
+    assert.deepEqual(
+      plan.conflicts.map(({ path: filePath }) => filePath),
+      ["src/foundation/flow.module.css"],
+    );
     await assert.rejects(() => applySetupPlan(plan), /conflicts/);
     assert.deepEqual(await snapshot(root), before);
   } finally {
@@ -281,7 +292,11 @@ test("align mode records an existing design without inventing baseline files", a
 
   try {
     await mkdir(path.join(root, ".agents"), { recursive: true });
-    await write(root, ".agents/css-modules.json", await readFile(path.join(root, "selected-profile.json"), "utf8"));
+    await write(
+      root,
+      ".agents/css-modules.json",
+      await readFile(path.join(root, "selected-profile.json"), "utf8"),
+    );
     const plan = await planSetup({ root, mode: "align" });
 
     assert.notEqual(plan.status, "conflict");
@@ -311,15 +326,27 @@ test("alignment bundles the selected mechanical checker without overwriting proj
     const plan = await planSetup({ root, mode: "align" });
 
     assert.ok(plan.changes.some(({ path: filePath }) => filePath.endsWith("scripts/check.mjs")));
-    assert.ok(plan.changes.some(({ path: filePath }) => filePath.endsWith("scripts/check-oxlint.mjs")));
-    assert.ok(plan.changes.some(({ path: filePath }) => filePath.endsWith("harness/eslint-plugin.mjs")));
-    assert.ok(plan.changes.some(({ path: filePath }) => filePath.endsWith("harness/oxlint-plugin.mjs")));
+    assert.ok(
+      plan.changes.some(({ path: filePath }) => filePath.endsWith("scripts/check-oxlint.mjs")),
+    );
+    assert.ok(
+      plan.changes.some(({ path: filePath }) => filePath.endsWith("harness/eslint-plugin.mjs")),
+    );
+    assert.ok(
+      plan.changes.some(({ path: filePath }) => filePath.endsWith("harness/oxlint-plugin.mjs")),
+    );
     assert.ok(plan.dependencies.includes("eslint"));
     assert.ok(plan.dependencies.includes("oxlint"));
     assert.ok(plan.dependencies.includes("stylelint"));
     await applySetupPlan(plan);
-    assert.equal(await readFile(path.join(root, "eslint.config.mjs"), "utf8"), "export default [];\n");
-    assert.equal(await readFile(path.join(root, "stylelint.config.mjs"), "utf8"), "export default {};\n");
+    assert.equal(
+      await readFile(path.join(root, "eslint.config.mjs"), "utf8"),
+      "export default [];\n",
+    );
+    assert.equal(
+      await readFile(path.join(root, "stylelint.config.mjs"), "utf8"),
+      "export default {};\n",
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -354,12 +381,16 @@ test("authorized migration replaces only the selected profile and preserves proj
     });
     assert.equal(plan.status, "ready");
     assert.deepEqual(
-      plan.changes.filter(({ action }) => action === "replace").map(({ path: filePath }) => filePath),
+      plan.changes
+        .filter(({ action }) => action === "replace")
+        .map(({ path: filePath }) => filePath),
       [".agents/css-modules.json"],
     );
 
     await applySetupPlan(plan);
-    const migrated = JSON.parse(await readFile(path.join(root, ".agents/css-modules.json"), "utf8"));
+    const migrated = JSON.parse(
+      await readFile(path.join(root, ".agents/css-modules.json"), "utf8"),
+    );
     assert.equal(migrated.methodologyVersion, "1.0.0");
     assert.equal(migrated.alias.bare, "#foundation");
     assert.deepEqual(migrated.layers.order, ["ground", "primitives", "widgets"]);
@@ -381,17 +412,14 @@ test("a partial apply failure reports completed files and leaves unrelated files
     const [first, second] = plan.changes;
     await write(root, second.path, "created after planning\n");
 
-    await assert.rejects(
-      async () => {
-        try {
-          await applySetupPlan(plan);
-        } catch (error) {
-          assert.deepEqual(error.touched, [first.path]);
-          throw error;
-        }
-      },
-      /Refusing to overwrite/,
-    );
+    await assert.rejects(async () => {
+      try {
+        await applySetupPlan(plan);
+      } catch (error) {
+        assert.deepEqual(error.touched, [first.path]);
+        throw error;
+      }
+    }, /Refusing to overwrite/);
     assert.equal(await readFile(path.join(root, second.path), "utf8"), "created after planning\n");
   } finally {
     await rm(root, { recursive: true, force: true });

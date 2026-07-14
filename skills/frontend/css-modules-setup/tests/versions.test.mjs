@@ -30,8 +30,13 @@ test("package, methodology, schema, adapter, and minimum versions share one cont
   assert.equal(versions.adapters[profile.adapter.name].version, profile.adapter.version);
   assert.equal(packageJson.devDependencies.oxlint, versions.enforcement.oxlint);
 
-  for (const [dependency, minimum] of Object.entries(versions.adapters[profile.adapter.name].minimums)) {
+  for (const [dependency, minimum] of Object.entries(
+    versions.adapters[profile.adapter.name].minimums,
+  )) {
     assert.ok(packageJson.devDependencies[dependency], `missing pinned ${dependency}`);
-    assert.ok(atLeast(packageJson.devDependencies[dependency], minimum), `${dependency} is below ${minimum}`);
+    assert.ok(
+      atLeast(packageJson.devDependencies[dependency], minimum),
+      `${dependency} is below ${minimum}`,
+    );
   }
 });

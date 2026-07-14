@@ -1,7 +1,6 @@
 {
   "private": true,
   "type": "module",
-  "packageManager": "npm@11.0.0",
   "imports": {
     "#styles": "./src/shared/styles/index.ts",
     "#styles/*": "./src/shared/styles/*"
@@ -11,5 +10,6 @@
     "css:types": "tsc --noEmit",
     "css:check": "node ../../scripts/verify-reference.mjs",
     "css:verify": "playwright test"
-  }
+  },
+  "packageManager": "npm@11.0.0"
 }

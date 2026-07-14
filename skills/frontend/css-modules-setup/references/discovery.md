@@ -14,12 +14,12 @@ Load this reference at the beginning of every setup run.
 
 Use `packageManager` and lockfiles:
 
-| Marker | Manager |
-| --- | --- |
-| `pnpm-lock.yaml` | pnpm |
-| `yarn.lock` | Yarn |
-| `bun.lock` or `bun.lockb` | Bun |
-| `package-lock.json` | npm |
+| Marker                    | Manager |
+| ------------------------- | ------- |
+| `pnpm-lock.yaml`          | pnpm    |
+| `yarn.lock`               | Yarn    |
+| `bun.lock` or `bun.lockb` | Bun     |
+| `package-lock.json`       | npm     |
 
 More than one current lockfile is ambiguity. Never create a second lockfile.
 

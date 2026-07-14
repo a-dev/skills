@@ -14,13 +14,13 @@ The Vite + React adapter is the tested reference. The shared API, layer topology
 
 Every run starts with `audit`, then proceeds only into the mode the user requested.
 
-| Mode | Purpose | Mutation contract |
-| --- | --- | --- |
-| `audit` | discover the project and report alignment | never writes |
-| `bootstrap` | create a selected baseline in an undecided project | writes after a plan is accepted |
-| `align` | fill safe gaps around compatible choices | preserves compatible alternatives |
-| `migrate` | replace an incompatible convention | requires an explicit migration request |
-| `verify` | run behavioral checks and disposable fixtures | does not change source or config |
+| Mode        | Purpose                                            | Mutation contract                      |
+| ----------- | -------------------------------------------------- | -------------------------------------- |
+| `audit`     | discover the project and report alignment          | never writes                           |
+| `bootstrap` | create a selected baseline in an undecided project | writes after a plan is accepted        |
+| `align`     | fill safe gaps around compatible choices           | preserves compatible alternatives      |
+| `migrate`   | replace an incompatible convention                 | requires an explicit migration request |
+| `verify`    | run behavioral checks and disposable fixtures      | does not change source or config       |
 
 A generic “set this up” request authorizes `bootstrap` or `align`, not `migrate`. Inspection, audit, and verification requests never authorize mutation.
 
@@ -214,25 +214,25 @@ On partial failure, do not erase successful user-owned changes. Name the last co
 
 ## Compatibility taxonomy
 
-| Status | Meaning |
-| --- | --- |
-| `aligned` | matches the portable contract and recorded project choices |
-| `missing` | a required selected capability is absent |
-| `drifted` | executable configuration conflicts with the profile |
-| `ambiguous` | multiple valid owners or targets exist |
-| `not-verifiable` | static inspection cannot prove behavior safely |
+| Status                   | Meaning                                                    |
+| ------------------------ | ---------------------------------------------------------- |
+| `aligned`                | matches the portable contract and recorded project choices |
+| `missing`                | a required selected capability is absent                   |
+| `drifted`                | executable configuration conflicts with the profile        |
+| `ambiguous`              | multiple valid owners or targets exist                     |
+| `not-verifiable`         | static inspection cannot prove behavior safely             |
 | `compatible-alternative` | different implementation with verified equivalent behavior |
 
 ## Pressure checks
 
-| Temptation | Required response |
-| --- | --- |
+| Temptation                                   | Required response                                                            |
+| -------------------------------------------- | ---------------------------------------------------------------------------- |
 | “It is a fresh app; just choose everything.” | Present the reference proposal; let the developer edit project-wide choices. |
-| “Replace this config; merging is slower.” | Preserve existing behavior and merge structurally. |
-| “Use npm; the command is equivalent.” | Use the detected package manager and workspace syntax. |
-| “Restyle one real Button to prove it works.” | Use a disposable or project-owned fixture. |
-| “Normalize these values to a 4px grid.” | Spacing and sizing are outside the generic setup. |
-| “The existing topology differs; migrate it.” | Migration requires an explicit request. |
+| “Replace this config; merging is slower.”    | Preserve existing behavior and merge structurally.                           |
+| “Use npm; the command is equivalent.”        | Use the detected package manager and workspace syntax.                       |
+| “Restyle one real Button to prove it works.” | Use a disposable or project-owned fixture.                                   |
+| “Normalize these values to a 4px grid.”      | Spacing and sizing are outside the generic setup.                            |
+| “The existing topology differs; migrate it.” | Migration requires an explicit request.                                      |
 
 ## Completion criterion
 

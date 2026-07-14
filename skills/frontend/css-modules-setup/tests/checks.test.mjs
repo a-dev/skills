@@ -77,7 +77,9 @@ async function createFixture({ invalid = false, overrides = {} } = {}) {
   await write(
     root,
     "src/styles/index.ts",
-    invalid ? "// atoms appears only in a comment.\nexport {};\n" : 'export { default as atoms } from "./atoms.module.css";\n',
+    invalid
+      ? "// atoms appears only in a comment.\nexport {};\n"
+      : 'export { default as atoms } from "./atoms.module.css";\n',
   );
   await write(
     root,

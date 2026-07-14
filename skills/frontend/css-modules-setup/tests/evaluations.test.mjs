@@ -41,5 +41,8 @@ test("the scorer rejects activation drift and spacing invention", () => {
 
   assert.equal(result.status, "failed");
   assert.equal(result.categories.find(({ category }) => category === "pressure")?.failed, 1);
-  assert.equal(result.categories.find(({ category }) => category === "trigger-negative")?.failed, 1);
+  assert.equal(
+    result.categories.find(({ category }) => category === "trigger-negative")?.failed,
+    1,
+  );
 });
