@@ -80,6 +80,13 @@ export async function verifyReferenceFixture() {
         `Expected generated declarations for the fixture modules; found ${relativeDeclarations.length}`,
       );
     }
+    for (const declaration of declarations) {
+      if (!(await readFile(declaration, "utf8")).includes("sourceMappingURL=")) {
+        throw new Error(
+          `Generated declaration is missing its declaration map: ${path.relative(fixture, declaration)}`,
+        );
+      }
+    }
 
     const tsc = path.join(REPOSITORY_ROOT, "node_modules", ".bin", "tsc");
     const typecheck = await run(tsc, [
@@ -117,6 +124,7 @@ export async function verifyReferenceFixture() {
 
     return {
       declarations: "passed",
+      declarationMaps: "passed",
       typecheck: "passed",
       build: "passed",
       sourceChecks: "passed",

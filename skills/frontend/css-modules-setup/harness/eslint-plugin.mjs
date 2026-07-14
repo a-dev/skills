@@ -128,7 +128,7 @@ const customPropertyStyleOnly = {
             context.report({
               node: property,
               messageId: "property",
-              data: { name: typeof name === "string" ? `\"${name}\"` : "entry" },
+              data: { name: typeof name === "string" ? `"${name}"` : "entry" },
             });
           }
         }

@@ -182,7 +182,7 @@ const plugins = [
             if (attribute.attribute?.startsWith("aria-") && !attribute.operator) {
               warn(
                 rule,
-                `[${attribute.attribute}] must select an explicit ARIA value such as \"true\" or \"false\".`,
+                `[${attribute.attribute}] must select an explicit ARIA value such as "true" or "false".`,
               );
             }
             if (privateBooleans.has(attribute.attribute) && attribute.operator) {

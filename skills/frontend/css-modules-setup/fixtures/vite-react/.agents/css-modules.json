@@ -24,7 +24,7 @@
     "order": ["reset", "base", "atoms", "ui"],
     "ownership": [
       { "glob": "src/shared/styles/*.module.css", "layer": "atoms" },
-      { "glob": "src/components/**/*.module.css", "layer": "ui" }
+      { "glob": "src/reference-button.module.css", "layer": "ui" }
     ],
     "localModules": { "strategy": "unlayered" }
   },

@@ -405,6 +405,17 @@ test("the bundled example satisfies the executable profile validator", async () 
   assert.deepEqual(validateProfile(example), []);
 });
 
+test("rejects a rule exception without the required scope, reason, or rule id", async () => {
+  const example = JSON.parse(
+    await readFile(new URL("../assets/css-modules.example.json", import.meta.url), "utf8"),
+  );
+  example.exceptions = [{ kind: "rule", rule: "css-modules/no-important" }];
+
+  const errors = validateProfile(example).join("; ");
+  assert.match(errors, /exceptions\[0\]\.scope/);
+  assert.match(errors, /exceptions\[0\]\.reason/);
+});
+
 test("rejects generic application commands in the CSS profile", async () => {
   const example = JSON.parse(
     await readFile(new URL("../assets/css-modules.example.json", import.meta.url), "utf8"),

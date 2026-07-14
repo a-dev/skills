@@ -68,7 +68,7 @@ Files under `assets/templates/` contain placeholders. Resolve every placeholder 
 
 Treat any remaining `{{PLACEHOLDER}}` as a setup failure. Render placeholders from these profile decisions:
 
-- `LAYER_ORDER`, `BASE_LAYER`, `SHARED_LAYER`, and `UI_LAYER` come from `layers`;
+- `LAYER_ORDER`, `SHARED_LAYER`, and `UI_LAYER` come from `layers`; the color import and `color-scheme` blocks use the reviewed `colorLayer` input;
 - helper and alias placeholders come from `helpers` and `alias`;
 - shared exports come from `sharedApi.modules`;
 - palette and semantic token bodies require developer-provided color values.

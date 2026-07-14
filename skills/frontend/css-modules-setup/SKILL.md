@@ -176,7 +176,7 @@ Run:
 4. `commands["css:verify"]`, or the bundled disposable reference fixture, when recorded;
 5. the read-only audit and setup dry-run again.
 
-The reference `css:check` command uses `scripts/check.mjs --run-declarations`, so declarations, CSS typing, ESLint, Stylelint, and cross-file contracts have one ordered entry point. Existing projects may record `enforcement.severity` as `warning` before promoting it to `error`.
+Record `css:check` as the bundled `check.mjs --run-declarations` invocation from `references/mechanical-enforcement.md`, so declarations, CSS typing, ESLint, Stylelint, and cross-file contracts have one ordered entry point. Existing projects may record `enforcement.severity` as `warning` before promoting it to `error`.
 
 Read `references/reference-fixture.md` when the selected project has no existing CSS-specific runtime fixture or when validating changes to this harness itself.
 

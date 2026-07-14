@@ -304,8 +304,17 @@ export function validateProfile(profile) {
     }
   }
 
-  for (const [index, exception] of (profile.exceptions ?? []).entries()) {
-    if (exception.kind === "rule") {
+  if (profile.exceptions !== undefined && !Array.isArray(profile.exceptions)) {
+    errors.push("exceptions must be an array");
+  }
+  for (const [index, exception] of (Array.isArray(profile.exceptions)
+    ? profile.exceptions
+    : []
+  ).entries()) {
+    requireString(exception?.kind, `exceptions[${index}].kind`);
+    requireString(exception?.scope, `exceptions[${index}].scope`);
+    requireString(exception?.reason, `exceptions[${index}].reason`);
+    if (exception?.kind === "rule") {
       requireString(exception.rule, `exceptions[${index}].rule`);
       if (exception.match !== undefined)
         requireString(exception.match, `exceptions[${index}].match`);
@@ -490,7 +499,7 @@ async function collectStaticConfigText(root, appRoot, viteConfigs) {
   ];
 
   const texts = [];
-  for (const candidate of [...new Set(candidates)]) {
+  for (const candidate of new Set(candidates)) {
     if (await exists(candidate)) {
       texts.push(await readText(candidate));
     }
@@ -1228,7 +1237,7 @@ async function main() {
         ? `${JSON.stringify(result, null, 2)}\n`
         : `${formatHuman(result)}\n`,
     );
-    process.exitCode = exitCodeFor(result);
+    process.exitCode = options.check ? exitCodeFor(result) : 0;
   } catch (error) {
     process.stderr.write(`Audit failed: ${error.message}\n`);
     process.exitCode = 2;

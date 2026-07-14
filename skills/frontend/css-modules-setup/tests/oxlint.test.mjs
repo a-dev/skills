@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -60,7 +60,9 @@ function profile(overrides = {}) {
 }
 
 async function createFixture({ invalid = false, overrides = {} } = {}) {
-  const root = await mkdtemp(path.join(os.tmpdir(), "css-modules-oxlint-"));
+  // realpath keeps the root canonical, so Oxlint reports cwd-relative file paths
+  // (macOS os.tmpdir() is symlinked, which made Oxlint fall back to absolute paths).
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "css-modules-oxlint-")));
   await write(root, ".agents/css-modules.json", `${JSON.stringify(profile(overrides), null, 2)}\n`);
   await write(root, "src/button.module.css", ".root {}\n.loading {}\n");
   await write(

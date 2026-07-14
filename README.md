@@ -107,13 +107,13 @@ node skills/frontend/css-modules-setup/scripts/audit.mjs \
 
 The audit statically inspects files. It does not import Vite configuration, install packages, generate declarations, or write to the target project.
 
-Use `--format json` for machine-readable output. Exit codes are:
+Use `--format json` for machine-readable output. Without `--check`, the audit is informational: it exits `0` whenever it completes and `2` only when it cannot run.
+
+Add `--check` when CI runs the audit. It preserves the read-only behavior and turns the findings into the CI exit contract:
 
 - `0`: aligned or only behavior remains to verify;
 - `1`: missing or drifted configuration;
 - `2`: ambiguity, invalid profile, or audit failure.
-
-Add `--check` when CI runs the audit. It preserves the read-only behavior and uses the exit codes above as the CI contract.
 
 ### Setup planner
 

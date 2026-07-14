@@ -31,6 +31,7 @@ test("reference component generates declarations, typechecks, builds, and reject
 
   assert.deepEqual(after, before);
   assert.equal(result.declarations, "passed");
+  assert.equal(result.declarationMaps, "passed");
   assert.equal(result.typecheck, "passed");
   assert.equal(result.build, "passed");
   assert.equal(result.invalidClassKey, "rejected");

@@ -120,13 +120,18 @@ function diagnosticLocation(diagnostic) {
 }
 
 function normalizeDiagnostics(payload, root, severity) {
+  // Oxlint runs with the project root as cwd and may report either cwd-relative
+  // or absolute file paths, so relative paths must resolve against root.
+  const relativeToRoot = (file) => {
+    return path.relative(root, path.resolve(root, file)).split(path.sep).join("/");
+  };
   const parsed = JSON.parse(payload || "[]");
   if (Array.isArray(parsed) && parsed.some((item) => Array.isArray(item.messages))) {
     return parsed.flatMap((result) =>
       (result.messages ?? []).map((message) => ({
         engine: "oxlint",
         ruleId: ruleIdOf(message),
-        file: path.relative(root, result.filePath).split(path.sep).join("/"),
+        file: relativeToRoot(result.filePath),
         line: message.line ?? 1,
         column: message.column ?? 1,
         message: message.message,
@@ -138,10 +143,7 @@ function normalizeDiagnostics(payload, root, severity) {
   return diagnostics.map((diagnostic) => ({
     engine: "oxlint",
     ruleId: ruleIdOf(diagnostic),
-    file: path
-      .relative(root, diagnostic.filename ?? diagnostic.filePath ?? root)
-      .split(path.sep)
-      .join("/"),
+    file: relativeToRoot(diagnostic.filename ?? diagnostic.filePath ?? root),
     ...diagnosticLocation(diagnostic),
     message: diagnostic.message,
     severity,

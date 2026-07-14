@@ -204,6 +204,7 @@ function parseArgs(argv) {
     else if (argument === "--help" || argument === "-h") options.help = true;
     else throw new Error(`Unknown argument: ${argument}`);
   }
+  if (!["human", "json"].includes(options.format)) throw new Error("format must be human or json");
   return options;
 }
 
