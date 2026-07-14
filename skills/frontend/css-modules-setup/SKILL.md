@@ -1,200 +1,222 @@
 ---
 name: css-modules-setup
-description: One-time bootstrap and drift audit of the typed CSS Modules system in a Vite + React project — vite-css-modules typings, cx/cssVars helpers, two-tier design tokens with light-dark() theming, cascade layer order, shared style modules behind the #styles alias. Audits before writing, so it is safe to re-run at any time to check whether a project is still aligned with the convention; it only fills gaps and never overwrites. Per-edit conventions live in the companion css-modules skill.
+description: Audit, bootstrap, align, migrate, or verify the typed CSS Modules methodology in a project.
 disable-model-invocation: true
 ---
 
-# Typed CSS Modules — project setup & alignment audit
+# Typed CSS Modules — setup and alignment
 
-Bootstraps (or audits) the plumbing that the `css-modules` conventions skill assumes: typed modules generation, the `cx`/`cssVars` helpers, two-tier tokens, a cascade layer order, and shared style modules behind the `#styles` alias. Recipes assume **Vite + React**; porting notes are at the end.
+This is the manual setup skill. It installs or verifies the plumbing consumed by the model-invoked `css-modules` skill.
 
-Safe to re-run: Phase 0 audits first, later phases only fill the gaps it found.
+The Vite + React adapter is the tested reference. The shared API, layer topology, visual values, and CSS-specific verification commands belong to the project.
 
-## Phase 0 — audit before touching anything
+## Choose one explicit mode
 
-Resolve the styles root first: follow the `#styles` alias if one is configured; otherwise glob for `**/styles/index.ts`. If neither hits, the `<styles-root>` rows below are `missing` and the root gets chosen in step 1.
+Every run starts with `audit`, then proceeds only into the mode the user requested.
 
-Check every marker and print a status table (`aligned` / `missing` / `drifted`) **before** making any change:
+| Mode | Purpose | Mutation contract |
+| --- | --- | --- |
+| `audit` | discover the project and report alignment | never writes |
+| `bootstrap` | create a selected baseline in an undecided project | writes after a plan is accepted |
+| `align` | fill safe gaps around compatible choices | preserves compatible alternatives |
+| `migrate` | replace an incompatible convention | requires an explicit migration request |
+| `verify` | run behavioral checks and disposable fixtures | does not change source or config |
 
-| Marker | Where to check |
-| --- | --- |
-| `patchCssModules({ generateSourceTypes: true, … })` plugin | `vite.config.ts` |
-| `localsConvention: "camelCaseOnly"` | `vite.config.ts` → `css.modules` |
-| `devSourcemap: true` | `vite.config.ts` → `css` |
-| `css:dts` script, run by `prepare` | `package.json` |
-| `*.module.css.d.ts` ignored | `.gitignore` |
-| CI runs `css:dts` before `tsc --noEmit` | CI workflow files |
-| `cx` + `cssVars` helpers | `<styles-root>/lib/` |
-| Token tiers: palette + semantic | `<styles-root>/vars/` |
-| `@layer` order + `base` element defaults | `<styles-root>/global.css` |
-| Shared modules + entry point | `<styles-root>/index.ts` |
-| `#styles` alias, subpaths included (`#styles/*`) | Vite `resolve.alias` or `package.json` `imports` |
+A generic “set this up” request authorizes `bootstrap` or `align`, not `migrate`. Inspection, audit, and verification requests never authorize mutation.
 
-Then:
+## Step 1 — establish a read-only baseline
 
-- **Everything aligned** → report that and stop; there is nothing to do.
-- **Missing** → scaffold from the recipes below.
-- **Drifted** (present but deviating: a different alias name, another helper implementation, another size-scale) → do **not** overwrite. Report the drift and adapt the remaining steps to the project's existing choices — the project wins unless the user explicitly asks to migrate.
+Read `references/discovery.md`, then:
 
-## 1. Pick the styles root (ask the user)
+1. detect the package manager and workspace layout;
+2. identify candidate Vite application roots;
+3. locate repository instructions and any existing profile;
+4. inspect aliases, helpers, shared modules, layer declarations, color files, CSS-specific commands, and their CI ordering;
+5. compare methodology, profile-schema, and adapter versions;
+6. record relevant pre-existing command failures;
+7. identify dirty files without modifying them.
 
-Skip this when the audit already found a styles root — an existing location is the project's choice; keep it.
-
-Otherwise, before scaffolding anything, ask the user where the styles system should live, suggesting **`shared/styles`** as the default (`src/shared/styles` when sources live under `src/`). Any answer works — consumers only ever import from the `#styles` alias, so the location never leaks into component code.
-
-Whatever root is chosen, the structure inside it is fixed:
-
-```
-<styles-root>/
-  index.ts               entry point, re-exported behind #styles
-  global.css             layer order, token imports, base element defaults — first import in the app entry
-  lib/
-    cx.ts
-    css-vars.ts
-  vars/
-    palette.css  colors.css  fonts.css  shape.css
-  layout.module.css
-  typography.module.css
-  utils.module.css
-```
-
-Recipes below write `<styles-root>` wherever the path appears; substitute the chosen root (project-root-relative, so it includes the `src/` segment when there is one) while writing files.
-
-## 2. Dependencies and Vite config
+Run the bundled audit when available:
 
 ```sh
-npm i classix && npm i -D vite-css-modules
+node <css-modules-setup-skill>/scripts/audit.mjs \
+  --root <project-root> \
+  --format human
 ```
 
-```ts
-// vite.config.ts
-import { patchCssModules } from "vite-css-modules";
+The audit parses files but never imports executable Vite or application configuration. A check that cannot be proven statically reports `not-verifiable` with a follow-up command.
 
-export default {
-  css: {
-    devSourcemap: true,
-    modules: { localsConvention: "camelCaseOnly" },
-  },
-  // declarationMap → Go to Definition lands in the .css source
-  plugins: [patchCssModules({ generateSourceTypes: true, declarationMap: true })],
-};
+**Complete when:** one application target is selected, every finding has a status, and the target worktree is unchanged.
+
+## Step 2 — resolve only consequential ambiguity
+
+Preserve a coherent existing project contract.
+
+Ask only when the repository cannot answer safely, including:
+
+- multiple plausible application roots;
+- conflicting layer-order declarations;
+- competing shared-style entry points;
+- incompatible aliases or helpers;
+- missing color values when the user selected the color-token contract;
+- a requested migration with more than one valid destination.
+
+For an undecided greenfield project, propose these reference choices together:
+
+- styles root: `src/shared/styles`;
+- alias: `#styles` with bare and subpath resolution;
+- helpers: `cx` and `cssVars`;
+- shared modules: `layout`, `typography`, and `utils`;
+- layer topology: `reset, base, atoms, ui`;
+- local component modules: unlayered;
+- composition: markup.
+
+Every item is editable. Module categories and cascade layers are separate decisions; several modules may belong to one layer.
+
+Do not ask for or create a spacing, sizing, typography, or shape scale. Preserve such systems when the project already defines them.
+
+**Complete when:** all decisions required for the requested mode are either discovered or explicitly selected.
+
+## Step 3 — print the mutation plan
+
+Before writing, print:
+
+- target application and package manager;
+- mode;
+- files to create and modify;
+- dependencies and CSS-harness package scripts to add;
+- configuration merges;
+- preserved compatible alternatives;
+- CSS-harness commands that will run;
+- explicit non-goals.
+
+Example:
+
+```text
+Target: apps/web
+Mode: align
+Package manager: pnpm
+
+CREATE  .agents/css-modules.json
+MODIFY  apps/web/vite.config.ts
+  - preserve react(), sentry(), and generateScopedName
+  - add patchCssModules({ generateSourceTypes: true })
+SKIP    apps/web/src/styles/cx.ts
+  - compatible existing helper selected
+
+No production component will be restyled.
+No spacing or sizing scale will be created.
 ```
 
-## 3. Typings workflow
+In `audit` and `verify`, print the plan as a report and do not offer automatic edits.
 
-- Add `*.module.css.d.ts` to `.gitignore` — the typings are generated, never hand-authored.
-- Add scripts: `"css:dts": "vite-css-modules"` and `"prepare": "npm run css:dts"`. With no globs the CLI covers `**/*.module.css` under the resolved Vite root — no path to keep in sync with the project layout. Typings regenerate automatically while the dev server runs; `prepare` regenerates them on every install, so fresh clones typecheck without a manual step.
-- **CI must run `css:dts` before `tsc --noEmit`** — the type layer only exists where it is generated (`npm ci` already triggers it via `prepare`, but an explicit step keeps the ordering visible).
+**Complete when:** the user can see the entire write set before mutation begins.
 
-## 4. The two helpers
+## Step 4 — apply technical plumbing safely
 
-```ts
-// <styles-root>/lib/cx.ts — pin the type locally so the underlying lib is swappable
-import { cx as classix } from "classix";
+For Vite + React, read `references/vite-react.md`. For profile and template semantics, read `references/project-contract.md`.
 
-export type ClassValue = string | false | null | undefined;
-export const cx = (...args: ClassValue[]): string => classix(...args);
+If audit reports a version mismatch, read `references/migrations.md`. Do not update versions or configuration outside explicit `migrate` mode.
+
+Rules:
+
+- use the detected package manager and workspace syntax;
+- never create a second lockfile;
+- structurally merge Vite, TypeScript, package, and CI configuration;
+- preserve plugins, aliases, CSS options, lifecycle scripts, and user choices;
+- never replace an existing `prepare` command;
+- do not overwrite a present file in `bootstrap` or `align`;
+- stop on incompatible drift unless `migrate` was explicitly selected;
+- report each touched file immediately if a later phase fails.
+
+Use the files under `assets/templates/` as parameterized source material. Replace placeholders with selected profile values; do not copy optional files merely to satisfy an audit marker.
+
+The palette and semantic color templates apply only when the developer selects the article's color contract. Visual values require project input.
+
+**Complete when:** every planned change is applied, every unplanned conflict stops the run, and no unrelated file changes.
+
+## Step 5 — write the project contract
+
+Copy `assets/css-modules.schema.json` to `.agents/css-modules.schema.json`, then create `.agents/css-modules.json` from the selected and discovered values.
+
+The profile records decisions the daily skill cannot safely rediscover. Executable configuration remains authoritative.
+
+Do not add fields for generic spacing or sizing scales. A project-specific extension may document them outside the generic schema.
+
+Validate the profile with:
+
+```sh
+node <css-modules-setup-skill>/scripts/audit.mjs \
+  --root <project-root> \
+  --format json
 ```
 
-```ts
-// <styles-root>/lib/css-vars.ts — the only sanctioned inline style
-import type { CSSProperties } from "react";
+**Complete when:** the profile validates, describes the selected app, and agrees with executable configuration.
 
-type CssVars = Record<`--${string}`, string | number>;
-export function cssVars(vars: CssVars): CSSProperties {
-  return vars as CSSProperties;
-}
-```
+## Step 6 — verify without touching production UI
 
-## 5. Design tokens — two tiers
+Run:
 
-```
-<styles-root>/vars/
-  palette.css   primitive: closed color ramps (--color-gray-100 … --color-blue-700)
-  colors.css    semantic:  --color-text-primary, --color-panel-bg, …
-  fonts.css     semantic:  --fs-*, --fw-*, --lh-*
-  shape.css     semantic:  --rounded-*
-```
+1. `commands["css:generate"]`, only after setup explicitly selected mutation;
+2. `commands["css:types"]`, which proves generated class-key access through TypeScript;
+3. `commands["css:check"]`, when the project records a CSS-specific static check;
+4. `commands["css:verify"]`, or the bundled disposable reference fixture, when recorded;
+5. the read-only audit and setup dry-run again.
 
-- Components will consume the semantic tier only (enforced by the `css-modules` conventions skill); the palette exists solely to feed semantic tokens.
-- Pick one size-scale naming with the user and enforce it (e.g. `xxs / xs / s / m / l / xl / xxl` — never mixed with `sm / md / lg`). The scale names steps for component `size` variants and sized tokens (`--rounded-*`, `--fs-*`); spacing stays free — no `--space-*` tier is scaffolded, `padding`/`margin`/`gap` take raw values.
-- Token files are unlayered plain `:root` custom properties, not rules.
+Do not add or run generic application `lint`, `test`, `build`, or `dev` commands merely because setup is verifying CSS. If CSS behavior cannot be isolated, report it as `not-verifiable` and name the project command a developer may choose to run.
 
-**Theming via `light-dark()`** (recommended): every semantic color token carries both values inline, and the resolved theme lands as `data-theme="light|dark"` on `<html>` mapped to `color-scheme`:
+Do not restyle an existing production component as a smoke test.
 
-```css
-/* colors.css — one line per semantic token, both themes */
-:root {
-  --color-text-primary: light-dark(var(--color-gray-900), var(--color-gray-100));
-}
-```
+Verification should prove:
 
-The `color-scheme` mapping is an element default, not a token — it lives in `global.css` under `@layer base` (section 6), keeping token files rules-free.
+- bare and subpath aliases resolve;
+- external `composes` builds when selected;
+- generated declarations reject invalid class keys;
+- the selected layer precedence works in a browser when runnable;
+- semantic colors switch with `color-scheme` when enabled;
+- native, ARIA, and private state render as expected.
 
-Component modules never reference `[data-theme]` — that rule lives in the conventions skill; the setup just has to make it possible.
+**Complete when:** commands pass or introduced failures are isolated, runtime claims have evidence, and a second setup run proposes no changes.
 
-## 6. Global stylesheet and cascade layer order
+## Step 7 — report and recover
 
-`<styles-root>/global.css` is the one global stylesheet, imported first in the app entry (`import "#styles/global.css"`). It declares the layer order, loads the token files, and holds `base`-layer element defaults such as the `color-scheme` theme mapping:
+Report:
 
-```css
-/* global.css — the @layer statement must precede the @imports */
-@layer reset, base, layout, typography, ui, utils;
+- selected mode and application;
+- created and modified files;
+- preserved alternatives;
+- CSS-harness commands and results;
+- runtime cases verified;
+- `not-verifiable` cases;
+- pre-existing versus introduced failures;
+- scoped rollback instructions for touched files.
 
-@import "./vars/palette.css";
-@import "./vars/colors.css";
-@import "./vars/fonts.css";
-@import "./vars/shape.css";
+On partial failure, do not erase successful user-owned changes. Name the last completed phase and every touched file.
 
-@layer base {
-  html {
-    color-scheme: light dark; /* OS decides by default */
-  }
-  html[data-theme="light"] {
-    color-scheme: light;
-  }
-  html[data-theme="dark"] {
-    color-scheme: dark;
-  }
-}
-```
+**Complete when:** the user can reproduce verification and reverse only this setup's changes if needed.
 
-- Reset, global base, shared style modules, and reusable UI primitives each declare their layer (`@layer ui { … }`).
-- `utils` deliberately comes **after** `ui`: later layers win, utilities are call-site escape hatches, and `visually-hidden` on a Button must beat the Button's own `position` and size rules — an escape hatch that loses is no escape hatch.
-- Feature/page component modules stay unlayered — unlayered styles beat every layer, so app code can always override shared primitives and utilities without specificity hacks.
+## Compatibility taxonomy
 
-## 7. Shared style modules behind one alias
+| Status | Meaning |
+| --- | --- |
+| `aligned` | matches the portable contract and recorded project choices |
+| `missing` | a required selected capability is absent |
+| `drifted` | executable configuration conflicts with the profile |
+| `ambiguous` | multiple valid owners or targets exist |
+| `not-verifiable` | static inspection cannot prove behavior safely |
+| `compatible-alternative` | different implementation with verified equivalent behavior |
 
-Create `layout.module.css` (structural grammar: `page`, `container`, `section`), `typography.module.css` (`h1`…`h4`, `body`, `caption`, `mono`), `utils.module.css` (escape hatches: `visually-hidden`, truncation, `rounded-*`). Seed exactly these baseline sets — they are the convention's standard library and the one blessed exception to the second-consumer rule (conventions rule 10); anything beyond them waits for its second consumer. Re-export everything from a single entry point behind an import alias (Vite `resolve.alias` or the `package.json` `imports` field):
+## Pressure checks
 
-```ts
-// <styles-root>/index.ts
-export { cx, type ClassValue } from "./lib/cx";
-export { cssVars } from "./lib/css-vars";
-export { default as layout } from "./layout.module.css";
-export { default as typography } from "./typography.module.css";
-export { default as utils } from "./utils.module.css";
-```
+| Temptation | Required response |
+| --- | --- |
+| “It is a fresh app; just choose everything.” | Present the reference proposal; let the developer edit project-wide choices. |
+| “Replace this config; merging is slower.” | Preserve existing behavior and merge structurally. |
+| “Use npm; the command is equivalent.” | Use the detected package manager and workspace syntax. |
+| “Restyle one real Button to prove it works.” | Use a disposable or project-owned fixture. |
+| “Normalize these values to a 4px grid.” | Spacing and sizing are outside the generic setup. |
+| “The existing topology differs; migrate it.” | Migration requires an explicit request. |
 
-```ts
-import "#styles/global.css"; // app entry, once, before anything else
-import { cx, layout, typography, utils } from "#styles"; // components
-```
+## Completion criterion
 
-The alias must cover subpaths, not only the bare specifier — `composes: … from "#styles/layout.module.css"` (conventions rule 11) and the `global.css` entry import both rely on it:
-
-- `package.json` `imports`: two entries — `"#styles": "./<styles-root>/index.ts"` and `"#styles/*": "./<styles-root>/*"`.
-- Vite `resolve.alias`: point `#styles` at the styles-root **directory** (Vite resolves the bare import to its `index.ts`), and mirror both forms in tsconfig `paths` so TypeScript agrees.
-
-## 8. Verify
-
-1. Run `css:dts`, then `tsc --noEmit` — both must pass.
-2. Restyle one small existing component following the `css-modules` conventions skill as a smoke test: typed lookup for a variant, `data-*` for a boolean, a semantic token for color.
-
-From here on the companion `css-modules` skill (model-invocable) carries every per-edit rule — this setup skill never needs to fire during normal coding.
-
-## Porting notes
-
-- **Next.js**: CSS Modules are built in; generate typings with `typed-css-modules` (watch mode in dev); set camelCase via css-loader's `exportLocalsConvention`.
-- **Other bundlers**: any css-loader/postcss-modules pipeline with `exportLocalsConvention: "camelCaseOnly"` gives the same naming contract.
-- Everything except the typings generation ports to any stack, including Vue/Svelte/Astro with modules support.
+Setup is complete only when the project contract is explicit, configuration and profile agree, verification has run, no production component was used as scaffolding, a second dry-run has zero changes, and no migration occurred without authorization.

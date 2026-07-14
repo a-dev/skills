@@ -1,0 +1,1019 @@
+#!/usr/bin/env node
+
+import { access, readFile, readdir } from "node:fs/promises";
+import path from "node:path";
+import process from "node:process";
+import { pathToFileURL } from "node:url";
+
+const VITE_CONFIG_NAMES = [
+  "vite.config.ts",
+  "vite.config.mts",
+  "vite.config.js",
+  "vite.config.mjs",
+  "vite.config.cjs",
+  "vite.config.cts",
+];
+
+const SOURCE_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mts",
+  ".mjs",
+  ".cts",
+  ".cjs",
+]);
+
+const SUPPORTED_METHODOLOGY_MAJOR = 1;
+const SUPPORTED_ADAPTERS = new Map([["vite-react", 1]]);
+const PROFILE_ROOT_KEYS = new Set([
+  "$schema",
+  "methodologyVersion",
+  "profileSchemaVersion",
+  "adapter",
+  "appRoot",
+  "stylesRoot",
+  "globalStylesheet",
+  "alias",
+  "helpers",
+  "sharedApi",
+  "layers",
+  "composition",
+  "colorTokens",
+  "commands",
+  "runtimeVerification",
+  "exceptions",
+  "extensions",
+]);
+
+function finding(id, status, detail, expected, actual) {
+  return {
+    id,
+    status,
+    detail,
+    ...(expected === undefined ? {} : { expected }),
+    ...(actual === undefined ? {} : { actual }),
+  };
+}
+
+async function exists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readText(filePath) {
+  return readFile(filePath, "utf8");
+}
+
+async function readJson(filePath) {
+  return JSON.parse(await readText(filePath));
+}
+
+function resolveInside(root, projectPath) {
+  const resolved = path.resolve(root, projectPath);
+  const relative = path.relative(root, resolved);
+
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`Project path escapes the audit root: ${projectPath}`);
+  }
+
+  return resolved;
+}
+
+export function validateProfile(profile) {
+  const errors = [];
+  const requireString = (value, key) => {
+    if (typeof value !== "string" || value.length === 0) {
+      errors.push(`${key} must be a non-empty string`);
+    }
+  };
+
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+    return ["profile must be a JSON object"];
+  }
+
+  for (const key of Object.keys(profile)) {
+    if (!PROFILE_ROOT_KEYS.has(key)) {
+      errors.push(`unknown profile field: ${key}`);
+    }
+  }
+
+  requireString(profile.methodologyVersion, "methodologyVersion");
+  if (
+    typeof profile.methodologyVersion === "string" &&
+    !/^\d+\.\d+\.\d+$/.test(profile.methodologyVersion)
+  ) {
+    errors.push("methodologyVersion must use major.minor.patch");
+  }
+
+  if (profile.profileSchemaVersion !== 1) {
+    errors.push("profileSchemaVersion must be 1");
+  }
+
+  requireString(profile?.adapter?.name, "adapter.name");
+  requireString(profile?.adapter?.version, "adapter.version");
+  if (
+    typeof profile?.adapter?.version === "string" &&
+    !/^\d+\.\d+\.\d+$/.test(profile.adapter.version)
+  ) {
+    errors.push("adapter.version must use major.minor.patch");
+  }
+  requireString(profile.appRoot, "appRoot");
+  requireString(profile.stylesRoot, "stylesRoot");
+  requireString(profile.globalStylesheet, "globalStylesheet");
+  requireString(profile?.alias?.bare, "alias.bare");
+  requireString(profile?.alias?.subpath, "alias.subpath");
+  requireString(profile?.helpers?.classNames, "helpers.classNames");
+  requireString(profile?.helpers?.cssVariables, "helpers.cssVariables");
+  requireString(profile?.sharedApi?.entryPoint, "sharedApi.entryPoint");
+
+  if (!Array.isArray(profile?.sharedApi?.modules) || profile.sharedApi.modules.length === 0) {
+    errors.push("sharedApi.modules must contain at least one module");
+  }
+
+  const order = profile?.layers?.order;
+  if (!Array.isArray(order) || order.length === 0) {
+    errors.push("layers.order must contain at least one layer");
+  } else if (new Set(order).size !== order.length) {
+    errors.push("layers.order must not contain duplicates");
+  }
+
+  for (const [index, module] of (profile?.sharedApi?.modules ?? []).entries()) {
+    requireString(module?.name, `sharedApi.modules[${index}].name`);
+    requireString(module?.path, `sharedApi.modules[${index}].path`);
+    requireString(module?.layer, `sharedApi.modules[${index}].layer`);
+
+    if (Array.isArray(order) && !order.includes(module?.layer)) {
+      errors.push(`sharedApi.modules[${index}].layer is absent from layers.order`);
+    }
+  }
+
+  const moduleNames = (profile?.sharedApi?.modules ?? []).map(({ name }) => name);
+  const modulePaths = (profile?.sharedApi?.modules ?? []).map(({ path: modulePath }) => modulePath);
+  if (new Set(moduleNames).size !== moduleNames.length) {
+    errors.push("sharedApi.modules names must be unique");
+  }
+  if (new Set(modulePaths).size !== modulePaths.length) {
+    errors.push("sharedApi.modules paths must be unique");
+  }
+
+  for (const [index, owner] of (profile?.layers?.ownership ?? []).entries()) {
+    requireString(owner?.glob, `layers.ownership[${index}].glob`);
+    requireString(owner?.layer, `layers.ownership[${index}].layer`);
+
+    if (Array.isArray(order) && !order.includes(owner?.layer)) {
+      errors.push(`layers.ownership[${index}].layer is absent from layers.order`);
+    }
+    if (
+      typeof owner?.glob === "string" &&
+      (path.isAbsolute(owner.glob) || owner.glob.split(/[\\/]/).includes(".."))
+    ) {
+      errors.push(`layers.ownership[${index}].glob must stay inside the project root`);
+    }
+  }
+
+  if (!Array.isArray(profile?.layers?.ownership)) {
+    errors.push("layers.ownership must be an array");
+  }
+
+  const localStrategies = new Set(["unlayered", "profiled", "custom"]);
+  if (!localStrategies.has(profile?.layers?.localModules?.strategy)) {
+    errors.push("layers.localModules.strategy is invalid");
+  }
+  if (
+    profile?.layers?.localModules?.strategy === "profiled" &&
+    !profile.layers.localModules.layer
+  ) {
+    errors.push("profiled local modules require a layer");
+  }
+  if (
+    profile?.layers?.localModules?.strategy === "custom" &&
+    !profile.layers.localModules.document
+  ) {
+    errors.push("custom local modules require a document");
+  }
+
+  const admissionStrategies = new Set([
+    "project-review",
+    "second-semantic-consumer",
+    "explicit",
+  ]);
+  if (!admissionStrategies.has(profile?.sharedApi?.admissionRule?.strategy)) {
+    errors.push("sharedApi.admissionRule.strategy is invalid");
+  }
+
+  if (
+    profile?.sharedApi?.admissionRule?.strategy === "explicit" &&
+    !profile.sharedApi.admissionRule.document
+  ) {
+    errors.push("explicit shared admission requires a document");
+  }
+
+  const compositionModes = new Set(["markup", "composes", "mixed-with-rule"]);
+  if (!compositionModes.has(profile?.composition?.mode)) {
+    errors.push("composition.mode is invalid");
+  }
+  if (
+    profile?.composition?.mode === "mixed-with-rule" &&
+    !profile.composition.rule
+  ) {
+    errors.push("mixed composition requires a rule");
+  }
+
+  if (typeof profile?.colorTokens?.enabled !== "boolean") {
+    errors.push("colorTokens.enabled must be boolean");
+  }
+
+  if (profile?.colorTokens?.enabled) {
+    if (
+      !Array.isArray(profile.colorTokens.paletteFiles) ||
+      profile.colorTokens.paletteFiles.length === 0
+    ) {
+      errors.push("enabled colorTokens requires at least one palette file");
+    }
+    if (
+      !Array.isArray(profile.colorTokens.semanticFiles) ||
+      profile.colorTokens.semanticFiles.length === 0
+    ) {
+      errors.push("enabled colorTokens requires at least one semantic file");
+    }
+    requireString(profile.colorTokens.themeOwner, "colorTokens.themeOwner");
+    requireString(profile.colorTokens.themeAttribute, "colorTokens.themeAttribute");
+    if (!Array.isArray(profile.colorTokens.modes) || profile.colorTokens.modes.length === 0) {
+      errors.push("enabled colorTokens requires at least one mode");
+    }
+  }
+
+  if (!profile.commands || typeof profile.commands !== "object" || Array.isArray(profile.commands)) {
+    errors.push("commands must be an object");
+  } else {
+    const cssCommandKeys = new Set([
+      "css:generate",
+      "css:types",
+      "css:check",
+      "css:verify",
+    ]);
+    for (const key of Object.keys(profile.commands)) {
+      if (!cssCommandKeys.has(key)) {
+        errors.push(`commands.${key} is not a CSS harness command`);
+      }
+    }
+    requireString(profile.commands["css:generate"], 'commands["css:generate"]');
+    requireString(profile.commands["css:types"], 'commands["css:types"]');
+  }
+
+  if ("spacing" in profile || "sizeScale" in profile) {
+    errors.push("generic profiles must not define spacing or sizeScale fields");
+  }
+
+  return errors;
+}
+
+async function detectPackageManager(root) {
+  const markers = [
+    ["pnpm", "pnpm-lock.yaml"],
+    ["yarn", "yarn.lock"],
+    ["bun", "bun.lock"],
+    ["bun", "bun.lockb"],
+    ["npm", "package-lock.json"],
+  ];
+  const detected = [];
+
+  for (const [manager, marker] of markers) {
+    if (await exists(path.join(root, marker))) {
+      detected.push({ manager, marker });
+    }
+  }
+
+  const managers = [...new Set(detected.map(({ manager }) => manager))];
+  if (managers.length > 1) {
+    return finding(
+      "project.package-manager",
+      "ambiguous",
+      `Multiple lockfile families found: ${detected.map(({ marker }) => marker).join(", ")}`,
+    );
+  }
+
+  let packageManagerField;
+  const packagePath = path.join(root, "package.json");
+  if (await exists(packagePath)) {
+    const packageJson = await readJson(packagePath);
+    packageManagerField = packageJson.packageManager?.split("@")[0];
+  }
+
+  if (packageManagerField && managers[0] && packageManagerField !== managers[0]) {
+    return finding(
+      "project.package-manager",
+      "ambiguous",
+      "packageManager disagrees with the lockfile",
+      packageManagerField,
+      managers[0],
+    );
+  }
+
+  const selected = packageManagerField ?? managers[0];
+  return selected
+    ? finding("project.package-manager", "aligned", selected, selected, selected)
+    : finding("project.package-manager", "not-verifiable", "No package-manager marker found");
+}
+
+async function walkSources(directory, output = []) {
+  if (!(await exists(directory))) {
+    return output;
+  }
+
+  const entries = (await readdir(directory, { withFileTypes: true })).sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
+  for (const entry of entries) {
+    if (["node_modules", ".git", "dist", "build", "coverage"].includes(entry.name)) {
+      continue;
+    }
+
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await walkSources(entryPath, output);
+    } else if (SOURCE_EXTENSIONS.has(path.extname(entry.name)) && !entry.name.endsWith(".d.ts")) {
+      output.push(entryPath);
+    }
+  }
+
+  return output;
+}
+
+async function walkMatchingFiles(directory, predicate, output = []) {
+  if (!(await exists(directory))) {
+    return output;
+  }
+
+  const entries = (await readdir(directory, { withFileTypes: true })).sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
+  for (const entry of entries) {
+    if (["node_modules", ".git", "dist", "build", "coverage"].includes(entry.name)) {
+      continue;
+    }
+
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await walkMatchingFiles(entryPath, predicate, output);
+    } else if (predicate(entryPath)) {
+      output.push(entryPath);
+    }
+  }
+
+  return output;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function globToRegExp(glob) {
+  const normalized = glob.split(path.sep).join("/");
+  let pattern = "^";
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    const character = normalized[index];
+    if (character === "*" && normalized[index + 1] === "*") {
+      if (normalized[index + 2] === "/") {
+        pattern += "(?:.*/)?";
+        index += 2;
+      } else {
+        pattern += ".*";
+        index += 1;
+      }
+    } else if (character === "*") {
+      pattern += "[^/]*";
+    } else if (character === "?") {
+      pattern += "[^/]";
+    } else {
+      pattern += escapeRegExp(character);
+    }
+  }
+
+  return new RegExp(`${pattern}$`);
+}
+
+function matchesGlob(projectPath, glob) {
+  const normalized = projectPath.split(path.sep).join("/");
+  return globToRegExp(glob).test(normalized);
+}
+
+function versionMajor(version) {
+  return Number.parseInt(version.split(".")[0], 10);
+}
+
+async function findViteConfigs(root) {
+  return walkMatchingFiles(root, (filePath) => VITE_CONFIG_NAMES.includes(path.basename(filePath)));
+}
+
+function normalizeLayerOrder(css) {
+  const declarations = [...css.matchAll(/@layer\s+([^;{]+);/g)].map((match) =>
+    match[1].split(",").map((name) => name.trim()).filter(Boolean),
+  );
+
+  return declarations;
+}
+
+function sameArray(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+async function collectStaticConfigText(root, appRoot, viteConfigs) {
+  const candidates = [
+    path.join(root, "package.json"),
+    path.join(root, "tsconfig.json"),
+    path.join(appRoot, "package.json"),
+    path.join(appRoot, "tsconfig.json"),
+    ...viteConfigs,
+  ];
+
+  const texts = [];
+  for (const candidate of [...new Set(candidates)]) {
+    if (await exists(candidate)) {
+      texts.push(await readText(candidate));
+    }
+  }
+
+  return texts.join("\n");
+}
+
+export async function auditProject({ root = process.cwd(), profilePath = ".agents/css-modules.json" } = {}) {
+  const resolvedRoot = path.resolve(root);
+  const findings = [await detectPackageManager(resolvedRoot)];
+  const resolvedProfile = resolveInside(resolvedRoot, profilePath);
+
+  if (!(await exists(resolvedProfile))) {
+    findings.push(
+      finding("profile.exists", "missing", `Profile not found: ${profilePath}`, profilePath),
+    );
+
+    const candidateConfigs = await findViteConfigs(resolvedRoot);
+    if (candidateConfigs.length > 1) {
+      findings.push(
+        finding(
+          "project.app-root",
+          "ambiguous",
+          `Profile is required to select one of ${candidateConfigs.length} Vite applications`,
+          undefined,
+          candidateConfigs.map((file) => path.relative(resolvedRoot, path.dirname(file))),
+        ),
+      );
+    } else if (candidateConfigs.length === 1) {
+      findings.push(
+        finding(
+          "project.app-root",
+          "not-verifiable",
+          `Candidate application found at ${path.relative(resolvedRoot, path.dirname(candidateConfigs[0]))}; record it in the profile`,
+        ),
+      );
+    }
+
+    return { root: resolvedRoot, profilePath, status: summarizeStatus(findings), findings };
+  }
+
+  let profile;
+  try {
+    profile = await readJson(resolvedProfile);
+  } catch (error) {
+    findings.push(finding("profile.parse", "ambiguous", error.message));
+    return { root: resolvedRoot, profilePath, status: "ambiguous", findings };
+  }
+
+  const profileErrors = validateProfile(profile);
+  if (profileErrors.length > 0) {
+    findings.push(finding("profile.schema", "ambiguous", profileErrors.join("; ")));
+    return { root: resolvedRoot, profilePath, status: "ambiguous", findings };
+  }
+
+  findings.push(finding("profile.schema", "aligned", "Profile shape is valid"));
+
+  const methodologyMajor = versionMajor(profile.methodologyVersion);
+  findings.push(
+    methodologyMajor === SUPPORTED_METHODOLOGY_MAJOR
+      ? finding("profile.methodology-version", "aligned", profile.methodologyVersion)
+      : finding(
+          "profile.methodology-version",
+          "drifted",
+          "Installed audit does not support this methodology major; plan an explicit migration",
+          SUPPORTED_METHODOLOGY_MAJOR,
+          methodologyMajor,
+        ),
+  );
+
+  const supportedAdapterMajor = SUPPORTED_ADAPTERS.get(profile.adapter.name);
+  const adapterMajor = versionMajor(profile.adapter.version);
+  if (supportedAdapterMajor === undefined) {
+    findings.push(
+      finding(
+        "profile.adapter-version",
+        "not-verifiable",
+        `No executable adapter is bundled for ${profile.adapter.name}@${profile.adapter.version}`,
+      ),
+    );
+  } else {
+    findings.push(
+      adapterMajor === supportedAdapterMajor
+        ? finding(
+            "profile.adapter-version",
+            "aligned",
+            `${profile.adapter.name}@${profile.adapter.version}`,
+          )
+        : finding(
+            "profile.adapter-version",
+            "drifted",
+            "Installed audit does not support this adapter major; plan an explicit migration",
+            supportedAdapterMajor,
+            adapterMajor,
+          ),
+    );
+  }
+
+  let appRoot;
+  try {
+    appRoot = resolveInside(resolvedRoot, profile.appRoot);
+  } catch (error) {
+    findings.push(finding("project.app-root", "ambiguous", error.message));
+    return { root: resolvedRoot, profilePath, status: "ambiguous", findings };
+  }
+
+  findings.push(
+    (await exists(appRoot))
+      ? finding("project.app-root", "aligned", profile.appRoot)
+      : finding("project.app-root", "missing", "Application root does not exist", profile.appRoot),
+  );
+
+  const viteConfigs = [];
+  let viteText = "";
+  if (profile.adapter.name === "vite-react") {
+    for (const name of VITE_CONFIG_NAMES) {
+      const candidate = path.join(appRoot, name);
+      if (await exists(candidate)) {
+        viteConfigs.push(candidate);
+      }
+    }
+
+    if (viteConfigs.length === 0) {
+      findings.push(finding("vite.config", "missing", "No Vite config found"));
+    } else if (viteConfigs.length > 1) {
+      findings.push(
+        finding(
+          "vite.config",
+          "ambiguous",
+          `Multiple Vite configs found: ${viteConfigs.map((file) => path.basename(file)).join(", ")}`,
+        ),
+      );
+    } else {
+      findings.push(finding("vite.config", "aligned", path.relative(resolvedRoot, viteConfigs[0])));
+    }
+
+    viteText = viteConfigs.length === 1 ? await readText(viteConfigs[0]) : "";
+    findings.push(
+      /patchCssModules\s*\(/.test(viteText)
+        ? finding("vite.patch-css-modules", "aligned", "patchCssModules is configured")
+        : finding("vite.patch-css-modules", "missing", "patchCssModules is absent"),
+    );
+    findings.push(
+      /generateSourceTypes\s*:\s*true/.test(viteText)
+        ? finding("vite.source-types", "aligned", "Source type generation is enabled")
+        : finding("vite.source-types", "missing", "generateSourceTypes: true is absent"),
+    );
+
+    const lightningCss = /transformer\s*:\s*["']lightningcss["']/.test(viteText);
+    const camelCaseConfigured = lightningCss
+      ? /cssModules[\s\S]*?(localsConvention|pattern)/.test(viteText)
+      : /localsConvention\s*:\s*["']camelCaseOnly["']/.test(viteText);
+    findings.push(
+      camelCaseConfigured
+        ? finding("vite.class-exports", "aligned", "Camel-case class export behavior is configured")
+        : finding(
+            "vite.class-exports",
+            "missing",
+            lightningCss
+              ? "Lightning CSS module export behavior is not statically visible"
+              : "localsConvention: camelCaseOnly is absent",
+          ),
+    );
+  } else {
+    findings.push(
+      finding(
+        "adapter.build-contract",
+        "not-verifiable",
+        `Use the ${profile.adapter.name} adapter's own executable verifier`,
+      ),
+    );
+  }
+
+  const requiredPaths = [
+    ["styles.root", profile.stylesRoot],
+    ["styles.global", profile.globalStylesheet],
+    ["styles.entry-point", profile.sharedApi.entryPoint],
+    ...profile.sharedApi.modules.map((module) => [`styles.module.${module.name}`, module.path]),
+  ];
+
+  if (profile.colorTokens.enabled) {
+    for (const [index, file] of profile.colorTokens.paletteFiles.entries()) {
+      requiredPaths.push([`colors.palette.${index}`, file]);
+    }
+    for (const [index, file] of profile.colorTokens.semanticFiles.entries()) {
+      requiredPaths.push([`colors.semantic.${index}`, file]);
+    }
+    requiredPaths.push(["colors.theme-owner", profile.colorTokens.themeOwner]);
+  }
+
+  let invalidProjectPath = false;
+  for (const [id, projectPath] of requiredPaths) {
+    let target;
+    try {
+      target = resolveInside(resolvedRoot, projectPath);
+    } catch (error) {
+      findings.push(finding(id, "ambiguous", error.message));
+      invalidProjectPath = true;
+      continue;
+    }
+
+    findings.push(
+      (await exists(target))
+        ? finding(id, "aligned", projectPath)
+        : finding(id, "missing", "Configured path does not exist", projectPath),
+    );
+  }
+
+  if (invalidProjectPath) {
+    return { root: resolvedRoot, profilePath, status: summarizeStatus(findings), findings };
+  }
+
+  const globalPath = resolveInside(resolvedRoot, profile.globalStylesheet);
+  const globalCss = (await exists(globalPath)) ? await readText(globalPath) : "";
+  const declaredOrders = normalizeLayerOrder(globalCss);
+  const matchingOrder = declaredOrders.some((order) => sameArray(order, profile.layers.order));
+  findings.push(
+    matchingOrder
+      ? finding("layers.order", "aligned", "Global layer order matches the profile", profile.layers.order, profile.layers.order)
+      : finding(
+          "layers.order",
+          declaredOrders.length === 0 ? "missing" : "drifted",
+          declaredOrders.length === 0
+            ? "No top-level layer order found"
+            : "Global layer order differs from the profile",
+          profile.layers.order,
+          declaredOrders,
+        ),
+  );
+
+  for (const module of profile.sharedApi.modules) {
+    const modulePath = resolveInside(resolvedRoot, module.path);
+    if (!(await exists(modulePath))) {
+      continue;
+    }
+
+    const css = await readText(modulePath);
+    const layerPattern = new RegExp(`@layer\\s+${escapeRegExp(module.layer)}\\b`);
+    findings.push(
+      layerPattern.test(css)
+        ? finding(`layers.module.${module.name}`, "aligned", `${module.path} owns ${module.layer}`)
+        : finding(
+            `layers.module.${module.name}`,
+            "drifted",
+            "Shared module does not declare its profiled layer",
+            module.layer,
+        ),
+    );
+
+    const matchingOwners = profile.layers.ownership.filter(({ glob }) =>
+      matchesGlob(module.path, glob),
+    );
+    if (matchingOwners.length === 0) {
+      findings.push(
+        finding(
+          `layers.ownership.${module.name}`,
+          "missing",
+          "No layer-ownership glob matches this shared module",
+          module.layer,
+        ),
+      );
+    } else if (matchingOwners.length > 1) {
+      findings.push(
+        finding(
+          `layers.ownership.${module.name}`,
+          "ambiguous",
+          "More than one layer-ownership glob matches this shared module",
+          undefined,
+          matchingOwners,
+        ),
+      );
+    } else {
+      const [owner] = matchingOwners;
+      findings.push(
+        owner.layer === module.layer
+          ? finding(
+              `layers.ownership.${module.name}`,
+              "aligned",
+              `${owner.glob} owns ${module.layer}`,
+            )
+          : finding(
+              `layers.ownership.${module.name}`,
+              "drifted",
+              "Ownership glob assigns a different layer",
+              module.layer,
+              owner.layer,
+            ),
+      );
+    }
+  }
+
+  const entryPointPath = resolveInside(resolvedRoot, profile.sharedApi.entryPoint);
+  if (await exists(entryPointPath)) {
+    const entryPointSource = await readText(entryPointPath);
+    for (const module of profile.sharedApi.modules) {
+      if (!module.export) {
+        continue;
+      }
+
+      findings.push(
+        new RegExp(`\\b${escapeRegExp(module.export)}\\b`).test(entryPointSource)
+          ? finding(`styles.export.${module.name}`, "aligned", module.export)
+          : finding(
+              `styles.export.${module.name}`,
+              "missing",
+              "Recorded shared export is absent from the entry point",
+              module.export,
+            ),
+      );
+    }
+  }
+
+  const staticConfigText = await collectStaticConfigText(resolvedRoot, appRoot, viteConfigs);
+  for (const [id, alias] of [
+    ["alias.bare", profile.alias.bare],
+    ["alias.subpath", profile.alias.subpath],
+  ]) {
+    findings.push(
+      staticConfigText.includes(alias)
+        ? finding(id, "aligned", alias)
+        : finding(id, "not-verifiable", `Alias is not statically visible: ${alias}`),
+    );
+  }
+
+  const stylesRoot = resolveInside(resolvedRoot, profile.stylesRoot);
+  const relativeGlobal = path.relative(stylesRoot, globalPath).split(path.sep).join("/");
+  const globalSpecifier = `${profile.alias.bare}/${relativeGlobal}`;
+  const sourceFiles = await walkSources(path.join(appRoot, "src"));
+  let globalImportCount = 0;
+  for (const sourceFile of sourceFiles) {
+    const source = await readText(sourceFile);
+    for (const match of source.matchAll(/\bimport\s+(?:[^"']*?\s+from\s+)?["']([^"']+)["']/g)) {
+      const specifier = match[1];
+      const resolvesToGlobal =
+        specifier === globalSpecifier ||
+        (specifier.startsWith(".") && path.resolve(path.dirname(sourceFile), specifier) === globalPath);
+
+      if (resolvesToGlobal) {
+        globalImportCount += 1;
+      }
+    }
+  }
+  findings.push(
+    globalImportCount === 1
+      ? finding("styles.global-import", "aligned", globalSpecifier, 1, 1)
+      : finding(
+          "styles.global-import",
+          globalImportCount === 0 ? "missing" : "drifted",
+          "Global stylesheet must be imported exactly once",
+          1,
+          globalImportCount,
+        ),
+  );
+
+  if (profile.colorTokens.enabled) {
+    findings.push(
+      /color-scheme\s*:/.test(globalCss)
+        ? finding("colors.color-scheme", "aligned", "color-scheme mapping found")
+        : finding("colors.color-scheme", "missing", "color-scheme mapping is absent"),
+    );
+
+    for (const mode of profile.colorTokens.modes.filter((mode) => mode !== "system")) {
+      const modePattern = new RegExp(
+        `\\[${escapeRegExp(profile.colorTokens.themeAttribute)}\\s*=\\s*["']${escapeRegExp(mode)}["']\\]`,
+      );
+      findings.push(
+        modePattern.test(globalCss)
+          ? finding(`colors.theme-mode.${mode}`, "aligned", mode)
+          : finding(
+              `colors.theme-mode.${mode}`,
+              "missing",
+              "Global stylesheet does not map this recorded theme mode",
+              mode,
+            ),
+      );
+    }
+
+    const paletteTokens = new Set();
+    for (const paletteFile of profile.colorTokens.paletteFiles) {
+      const palettePath = resolveInside(resolvedRoot, paletteFile);
+      if (!(await exists(palettePath))) {
+        continue;
+      }
+      const paletteCss = await readText(palettePath);
+      for (const match of paletteCss.matchAll(/(--[\w-]+)\s*:/g)) {
+        paletteTokens.add(match[1]);
+      }
+    }
+
+    findings.push(
+      paletteTokens.size > 0
+        ? finding("colors.palette-definitions", "aligned", `${paletteTokens.size} palette tokens found`)
+        : finding("colors.palette-definitions", "missing", "No palette token definitions found"),
+    );
+
+    const semanticTexts = [];
+    for (const semanticFile of profile.colorTokens.semanticFiles) {
+      const semanticPath = resolveInside(resolvedRoot, semanticFile);
+      if (await exists(semanticPath)) {
+        semanticTexts.push(await readText(semanticPath));
+      }
+    }
+    findings.push(
+      semanticTexts.some((css) => /light-dark\s*\(/.test(css))
+        ? finding("colors.semantic-mapping", "aligned", "light-dark semantic mapping found")
+        : finding("colors.semantic-mapping", "missing", "No light-dark semantic mapping found"),
+    );
+
+    const moduleFiles = await walkMatchingFiles(
+      path.join(appRoot, "src"),
+      (filePath) => filePath.endsWith(".module.css"),
+    );
+    const paletteViolations = [];
+    const themeSelectorViolations = [];
+    const themeSelector = new RegExp(`\\[${escapeRegExp(profile.colorTokens.themeAttribute)}(?:\\s*=|\\])`);
+
+    for (const moduleFile of moduleFiles) {
+      const css = await readText(moduleFile);
+      const relativeModule = path.relative(resolvedRoot, moduleFile);
+      if (
+        [...paletteTokens].some((token) =>
+          new RegExp(`var\\(\\s*${escapeRegExp(token)}(?:\\s*[,)]|\\s*$)`).test(css),
+        )
+      ) {
+        paletteViolations.push(relativeModule);
+      }
+      if (themeSelector.test(css)) {
+        themeSelectorViolations.push(relativeModule);
+      }
+    }
+
+    findings.push(
+      paletteViolations.length === 0
+        ? finding("colors.palette-boundary", "aligned", "Component modules avoid palette tokens")
+        : finding(
+            "colors.palette-boundary",
+            "drifted",
+            "Component modules consume primitive palette tokens",
+            "semantic color roles only",
+            paletteViolations,
+          ),
+    );
+    findings.push(
+      themeSelectorViolations.length === 0
+        ? finding("colors.theme-ownership", "aligned", "Component modules do not own theme selectors")
+        : finding(
+            "colors.theme-ownership",
+            "drifted",
+            "Component modules contain the application theme selector",
+            profile.colorTokens.themeOwner,
+            themeSelectorViolations,
+          ),
+    );
+  }
+
+  const commandEntries = Object.entries(profile.commands);
+  findings.push(
+    commandEntries.length > 0 && commandEntries.every(([, command]) => typeof command === "string" && command.length > 0)
+      ? finding("commands.profile", "aligned", `${commandEntries.length} commands recorded`)
+      : finding("commands.profile", "missing", "No usable CSS-harness commands recorded"),
+  );
+
+  findings.push(
+    finding(
+      "types.freshness",
+      "not-verifiable",
+      `Run explicit verify mode: ${profile.commands["css:generate"]} && ${profile.commands["css:types"]}`,
+    ),
+  );
+
+  findings.push(
+    finding(
+      "runtime.behavior",
+      "not-verifiable",
+      "Static audit does not execute Vite or a browser; run explicit verify mode",
+    ),
+  );
+
+  const status = summarizeStatus(findings);
+  return { root: resolvedRoot, profilePath, status, findings };
+}
+
+function summarizeStatus(findings) {
+  if (findings.some(({ status }) => status === "ambiguous")) {
+    return "ambiguous";
+  }
+  if (findings.some(({ status }) => status === "drifted")) {
+    return "drifted";
+  }
+  if (findings.some(({ status }) => status === "missing")) {
+    return "missing";
+  }
+  if (findings.some(({ status }) => status === "not-verifiable")) {
+    return "not-verifiable";
+  }
+  return "aligned";
+}
+
+export function exitCodeFor(result) {
+  if (result.status === "ambiguous") {
+    return 2;
+  }
+  if (["missing", "drifted"].includes(result.status)) {
+    return 1;
+  }
+  return 0;
+}
+
+export function formatHuman(result) {
+  const lines = [`CSS Modules alignment: ${result.root}`, ""];
+  const width = Math.max(...result.findings.map(({ status }) => status.length));
+
+  for (const item of result.findings) {
+    lines.push(`${item.status.toUpperCase().padEnd(width)}  ${item.id.padEnd(28)}  ${item.detail}`);
+  }
+
+  lines.push("", `Result: ${result.status}`);
+  return lines.join("\n");
+}
+
+function parseArgs(argv) {
+  const options = { root: process.cwd(), profilePath: ".agents/css-modules.json", format: "human" };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--root") {
+      options.root = argv[++index];
+    } else if (argument === "--profile") {
+      options.profilePath = argv[++index];
+    } else if (argument === "--format") {
+      options.format = argv[++index];
+    } else if (argument === "--help" || argument === "-h") {
+      options.help = true;
+    } else {
+      throw new Error(`Unknown argument: ${argument}`);
+    }
+  }
+
+  if (!options.root || !options.profilePath) {
+    throw new Error("--root and --profile require values");
+  }
+  if (!new Set(["human", "json"]).has(options.format)) {
+    throw new Error("--format must be human or json");
+  }
+
+  return options;
+}
+
+function usage() {
+  return [
+    "Usage: node audit.mjs [options]",
+    "",
+    "--root <path>       project root; defaults to cwd",
+    "--profile <path>    profile path relative to root",
+    "--format <format>   human or json",
+  ].join("\n");
+}
+
+async function main() {
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    if (options.help) {
+      process.stdout.write(`${usage()}\n`);
+      return;
+    }
+
+    const result = await auditProject(options);
+    process.stdout.write(
+      options.format === "json" ? `${JSON.stringify(result, null, 2)}\n` : `${formatHuman(result)}\n`,
+    );
+    process.exitCode = exitCodeFor(result);
+  } catch (error) {
+    process.stderr.write(`Audit failed: ${error.message}\n`);
+    process.exitCode = 2;
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  await main();
+}

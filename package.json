@@ -3,5 +3,9 @@
   "version": "0.1.0",
   "description": "a-dev agent's skills",
   "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test skills/frontend/css-modules-setup/tests/*.test.mjs"
+  },
   "license": "MIT"
 }
