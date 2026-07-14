@@ -118,6 +118,14 @@
               "layer": {
                 "type": "string",
                 "minLength": 1
+              },
+              "publicClasses": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             }
           }
@@ -370,6 +378,24 @@
         }
       }
     },
+    "enforcement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity"],
+      "properties": {
+        "severity": {
+          "enum": ["warning", "error"]
+        },
+        "privateBooleanAttributes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^data-[a-z0-9-]+$"
+          }
+        }
+      }
+    },
     "exceptions": {
       "type": "array",
       "items": {
@@ -385,8 +411,28 @@
           },
           "reason": {
             "type": "string"
+          },
+          "rule": {
+            "type": "string",
+            "minLength": 1
+          },
+          "match": {
+            "type": "string",
+            "minLength": 1
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": { "const": "rule" }
+              }
+            },
+            "then": {
+              "required": ["rule"]
+            }
+          }
+        ]
       }
     },
     "extensions": {

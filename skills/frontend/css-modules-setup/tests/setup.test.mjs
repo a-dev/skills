@@ -293,6 +293,38 @@ test("align mode records an existing design without inventing baseline files", a
   }
 });
 
+test("alignment bundles the selected mechanical checker without overwriting project lint config", async () => {
+  const root = await createGreenfieldFixture();
+
+  try {
+    const profilePath = path.join(root, "selected-profile.json");
+    const selected = JSON.parse(await readFile(profilePath, "utf8"));
+    selected.enforcement = {
+      severity: "warning",
+      privateBooleanAttributes: ["data-loading"],
+    };
+    selected.sharedApi.modules[0].publicClasses = ["cluster"];
+    await write(root, ".agents/css-modules.json", `${JSON.stringify(selected, null, 2)}\n`);
+    await write(root, "eslint.config.mjs", "export default [];\n");
+    await write(root, "stylelint.config.mjs", "export default {};\n");
+
+    const plan = await planSetup({ root, mode: "align" });
+
+    assert.ok(plan.changes.some(({ path: filePath }) => filePath.endsWith("scripts/check.mjs")));
+    assert.ok(plan.changes.some(({ path: filePath }) => filePath.endsWith("scripts/check-oxlint.mjs")));
+    assert.ok(plan.changes.some(({ path: filePath }) => filePath.endsWith("harness/eslint-plugin.mjs")));
+    assert.ok(plan.changes.some(({ path: filePath }) => filePath.endsWith("harness/oxlint-plugin.mjs")));
+    assert.ok(plan.dependencies.includes("eslint"));
+    assert.ok(plan.dependencies.includes("oxlint"));
+    assert.ok(plan.dependencies.includes("stylelint"));
+    await applySetupPlan(plan);
+    assert.equal(await readFile(path.join(root, "eslint.config.mjs"), "utf8"), "export default [];\n");
+    assert.equal(await readFile(path.join(root, "stylelint.config.mjs"), "utf8"), "export default {};\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("migrate mode requires explicit authorization", async () => {
   const root = await createGreenfieldFixture();
 

@@ -25,8 +25,20 @@ const SOURCE_EXTENSIONS = new Set([
   ".cjs",
 ]);
 
-const SUPPORTED_METHODOLOGY_MAJOR = 1;
-const SUPPORTED_ADAPTERS = new Map([["vite-react", 1]]);
+const VERSION_CONTRACT = JSON.parse(
+  await readFile(new URL("../versions.json", import.meta.url), "utf8"),
+);
+const SUPPORTED_METHODOLOGY_MAJOR = Number.parseInt(
+  VERSION_CONTRACT.methodologyVersion.split(".")[0],
+  10,
+);
+const SUPPORTED_PROFILE_SCHEMA = VERSION_CONTRACT.profileSchemaVersion;
+const SUPPORTED_ADAPTERS = new Map(
+  Object.entries(VERSION_CONTRACT.adapters).map(([name, adapter]) => [
+    name,
+    Number.parseInt(adapter.version.split(".")[0], 10),
+  ]),
+);
 const PROFILE_ROOT_KEYS = new Set([
   "$schema",
   "methodologyVersion",
@@ -43,6 +55,7 @@ const PROFILE_ROOT_KEYS = new Set([
   "colorTokens",
   "commands",
   "runtimeVerification",
+  "enforcement",
   "exceptions",
   "extensions",
 ]);
@@ -112,8 +125,8 @@ export function validateProfile(profile) {
     errors.push("methodologyVersion must use major.minor.patch");
   }
 
-  if (profile.profileSchemaVersion !== 1) {
-    errors.push("profileSchemaVersion must be 1");
+  if (!Number.isInteger(profile.profileSchemaVersion) || profile.profileSchemaVersion < 1) {
+    errors.push("profileSchemaVersion must be a positive integer");
   }
 
   requireString(profile?.adapter?.name, "adapter.name");
@@ -148,6 +161,14 @@ export function validateProfile(profile) {
     requireString(module?.name, `sharedApi.modules[${index}].name`);
     requireString(module?.path, `sharedApi.modules[${index}].path`);
     requireString(module?.layer, `sharedApi.modules[${index}].layer`);
+    if (
+      module?.publicClasses !== undefined &&
+      (!Array.isArray(module.publicClasses) ||
+        module.publicClasses.some((className) => typeof className !== "string" || className.length === 0) ||
+        new Set(module.publicClasses).size !== module.publicClasses.length)
+    ) {
+      errors.push(`sharedApi.modules[${index}].publicClasses must contain unique non-empty strings`);
+    }
 
     if (Array.isArray(order) && !order.includes(module?.layer)) {
       errors.push(`sharedApi.modules[${index}].layer is absent from layers.order`);
@@ -266,6 +287,37 @@ export function validateProfile(profile) {
     }
     requireString(profile.commands["css:generate"], 'commands["css:generate"]');
     requireString(profile.commands["css:types"], 'commands["css:types"]');
+  }
+
+  if (profile.enforcement !== undefined) {
+    if (!profile.enforcement || typeof profile.enforcement !== "object" || Array.isArray(profile.enforcement)) {
+      errors.push("enforcement must be an object");
+    } else {
+      if (!new Set(["warning", "error"]).has(profile.enforcement.severity)) {
+        errors.push("enforcement.severity must be warning or error");
+      }
+      if (
+        profile.enforcement.privateBooleanAttributes !== undefined &&
+        (!Array.isArray(profile.enforcement.privateBooleanAttributes) ||
+          profile.enforcement.privateBooleanAttributes.some(
+            (attribute) => typeof attribute !== "string" || !attribute.startsWith("data-"),
+          ))
+      ) {
+        errors.push("enforcement.privateBooleanAttributes must contain data-* names");
+      }
+      for (const [index, module] of (profile.sharedApi?.modules ?? []).entries()) {
+        if (!Array.isArray(module.publicClasses)) {
+          errors.push(`enforcement requires sharedApi.modules[${index}].publicClasses`);
+        }
+      }
+    }
+  }
+
+  for (const [index, exception] of (profile.exceptions ?? []).entries()) {
+    if (exception.kind === "rule") {
+      requireString(exception.rule, `exceptions[${index}].rule`);
+      if (exception.match !== undefined) requireString(exception.match, `exceptions[${index}].match`);
+    }
   }
 
   if ("spacing" in profile || "sizeScale" in profile) {
@@ -557,6 +609,18 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
           "Installed audit does not support this methodology major; plan an explicit migration",
           SUPPORTED_METHODOLOGY_MAJOR,
           methodologyMajor,
+        ),
+  );
+
+  findings.push(
+    profile.profileSchemaVersion === SUPPORTED_PROFILE_SCHEMA
+      ? finding("profile.schema-version", "aligned", profile.profileSchemaVersion)
+      : finding(
+          "profile.schema-version",
+          "drifted",
+          "Installed audit does not support this profile schema; plan an explicit migration",
+          SUPPORTED_PROFILE_SCHEMA,
+          profile.profileSchemaVersion,
         ),
   );
 

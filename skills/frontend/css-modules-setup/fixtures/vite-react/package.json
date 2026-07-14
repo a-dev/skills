@@ -9,7 +9,7 @@
   "scripts": {
     "css:generate": "vite build",
     "css:types": "tsc --noEmit",
-    "css:check": "node --test",
+    "css:check": "node ../../scripts/verify-reference.mjs",
     "css:verify": "playwright test"
   }
 }

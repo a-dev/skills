@@ -125,7 +125,7 @@ In `audit` and `verify`, print the plan as a report and do not offer automatic e
 
 ## Step 4 — apply technical plumbing safely
 
-For Vite + React, read `references/vite-react.md`. For profile and template semantics, read `references/project-contract.md`.
+For Vite + React, read `adapters/vite-react.md`. For profile and template semantics, read `references/project-contract.md`.
 
 If audit reports a version mismatch, read `references/migrations.md`. Do not update versions or configuration outside explicit `migrate` mode.
 
@@ -139,6 +139,8 @@ Rules:
 - do not overwrite a present file in `bootstrap` or `align`;
 - stop on incompatible drift unless `migrate` was explicitly selected;
 - report each touched file immediately if a later phase fails.
+
+When the selected profile enables `enforcement`, read `references/mechanical-enforcement.md`. Bundle the checker files shown by the setup plan, install only the printed CSS-harness dependencies, and preserve the project's existing ESLint, Oxlint, and Stylelint configuration.
 
 Use the files under `assets/templates/` as parameterized source material through `scripts/setup.mjs`. In `bootstrap`, pass the developer-reviewed values with `--inputs <json-path>`. An unresolved required input returns `needs-input`; it never becomes an empty class or invented visual value.
 
@@ -173,6 +175,8 @@ Run:
 3. `commands["css:check"]`, when the project records a CSS-specific static check;
 4. `commands["css:verify"]`, or the bundled disposable reference fixture, when recorded;
 5. the read-only audit and setup dry-run again.
+
+The reference `css:check` command uses `scripts/check.mjs --run-declarations`, so declarations, CSS typing, ESLint, Stylelint, and cross-file contracts have one ordered entry point. Existing projects may record `enforcement.severity` as `warning` before promoting it to `error`.
 
 Read `references/reference-fixture.md` when the selected project has no existing CSS-specific runtime fixture or when validating changes to this harness itself.
 

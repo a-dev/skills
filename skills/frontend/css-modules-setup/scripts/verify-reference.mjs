@@ -7,6 +7,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { checkProject } from "./check.mjs";
+
 const SCRIPT_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_ROOT = path.dirname(SCRIPT_ROOT);
 const REPOSITORY_ROOT = path.resolve(SKILL_ROOT, "../../..");
@@ -85,6 +87,11 @@ export async function verifyReferenceFixture() {
       throw new Error(`Reference fixture typecheck failed:\n${typecheck.stdout}${typecheck.stderr}`);
     }
 
+    const sourceChecks = await checkProject({ root: fixture });
+    if (sourceChecks.status !== "passed") {
+      throw new Error(`Reference fixture source checks failed:\n${JSON.stringify(sourceChecks.findings, null, 2)}`);
+    }
+
     const componentPath = path.join(fixture, "src", "reference-button.tsx");
     const component = await readFile(componentPath, "utf8");
     await writeFile(componentPath, `${component}\nexport const invalidClassProbe = styles.missingClass;\n`);
@@ -101,6 +108,7 @@ export async function verifyReferenceFixture() {
       declarations: "passed",
       typecheck: "passed",
       build: "passed",
+      sourceChecks: "passed",
       invalidClassKey: "rejected",
       generatedDeclarations: relativeDeclarations,
     };

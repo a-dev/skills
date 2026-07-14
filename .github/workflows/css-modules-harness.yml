@@ -22,7 +22,7 @@ jobs:
         run: npm run css:evaluate
       - name: Read-only audit check mode
         run: npm run css:audit-fixture
-      - name: Reference declaration, typecheck, and build fixture
+      - name: Reference declaration, typecheck, ESLint, Stylelint, contract, and build fixture
         run: npm run css:fixture
 
   browser-fixtures:

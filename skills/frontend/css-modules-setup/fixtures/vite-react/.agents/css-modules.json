@@ -14,7 +14,8 @@
         "name": "atoms",
         "export": "atoms",
         "path": "src/shared/styles/atoms.module.css",
-        "layer": "atoms"
+        "layer": "atoms",
+        "publicClasses": ["cluster", "layer-probe"]
       }
     ],
     "admissionRule": { "strategy": "project-review" }
@@ -51,5 +52,24 @@
     "preferences": ["reduced-motion", "forced-colors"],
     "directions": ["ltr"]
   },
-  "exceptions": []
+  "enforcement": {
+    "severity": "error",
+    "privateBooleanAttributes": ["data-loading"]
+  },
+  "exceptions": [
+    {
+      "kind": "rule",
+      "rule": "css-modules/no-raw-color-in-component",
+      "scope": "src/shared/styles/atoms.module.css",
+      "match": "rgb(255 0 0)",
+      "reason": "The browser fixture needs one stable shared-layer probe color."
+    },
+    {
+      "kind": "rule",
+      "rule": "css-modules/no-raw-color-in-component",
+      "scope": "src/unlayered-probe.module.css",
+      "match": "rgb(0 128 0)",
+      "reason": "The browser fixture needs one stable unlayered cascade probe color."
+    }
+  ]
 }

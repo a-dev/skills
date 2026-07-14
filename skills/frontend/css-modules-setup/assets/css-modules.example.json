@@ -24,19 +24,22 @@
         "name": "layout",
         "export": "layout",
         "path": "src/shared/styles/layout.module.css",
-        "layer": "atoms"
+        "layer": "atoms",
+        "publicClasses": ["cluster"]
       },
       {
         "name": "typography",
         "export": "typography",
         "path": "src/shared/styles/typography.module.css",
-        "layer": "atoms"
+        "layer": "atoms",
+        "publicClasses": ["heading"]
       },
       {
         "name": "utils",
         "export": "utils",
         "path": "src/shared/styles/utils.module.css",
-        "layer": "atoms"
+        "layer": "atoms",
+        "publicClasses": ["visually-hidden"]
       }
     ],
     "admissionRule": {
@@ -85,6 +88,10 @@
     "states": ["disabled", "loading", "selected", "error"],
     "preferences": ["reduced-motion", "forced-colors"],
     "directions": ["ltr"]
+  },
+  "enforcement": {
+    "severity": "warning",
+    "privateBooleanAttributes": ["data-loading"]
   },
   "exceptions": []
 }

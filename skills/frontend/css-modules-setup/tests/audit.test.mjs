@@ -295,6 +295,27 @@ test("reports methodology-major drift without rewriting the profile", async () =
   }
 });
 
+test("reports profile-schema drift without rewriting the profile", async () => {
+  const root = await createFixture();
+
+  try {
+    await updateProfile(root, (profile) => {
+      profile.profileSchemaVersion = 2;
+    });
+    const before = await snapshot(root);
+    const result = await auditProject({ root });
+    const after = await snapshot(root);
+
+    assert.deepEqual(after, before);
+    assert.equal(
+      result.findings.find(({ id }) => id === "profile.schema-version")?.status,
+      "drifted",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("reports ownership drift separately from the layer declared in CSS", async () => {
   const root = await createFixture();
 

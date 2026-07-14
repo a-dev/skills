@@ -91,6 +91,8 @@ Make the smallest change consistent with the project contract and the rules belo
 
 Run the profile's applicable `css:generate`, `css:types`, `css:check`, and `css:verify` commands. The last two are optional and exist only when the project has CSS-specific checks.
 
+When `enforcement` is enabled, treat checker rule IDs as objective findings. Apply only documented `(rule, scope, match)` exceptions. Shared-admission decisions, semantic coupling, visual quality, and project-owned spacing or sizing policy remain agent/human review rather than lint rules.
+
 Do not run generic application `lint`, `test`, `build`, or `dev` commands merely because this is a styling edit. If the CSS contract cannot be verified by a recorded command, report that part as unverified.
 
 **Complete when:** configured CSS declaration, type, and contract checks pass, and pre-existing failures are separated from failures introduced by the edit.

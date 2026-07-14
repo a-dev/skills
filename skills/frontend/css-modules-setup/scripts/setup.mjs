@@ -12,6 +12,20 @@ const SCRIPT_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_ROOT = path.dirname(SCRIPT_ROOT);
 const ASSET_ROOT = path.join(SKILL_ROOT, "assets");
 const TEMPLATE_ROOT = path.join(ASSET_ROOT, "templates");
+const HARNESS_ROOT = path.join(SKILL_ROOT, "harness");
+const SCRIPT_ROOT_FILES = ["audit.mjs", "check.mjs", "check-oxlint.mjs"];
+const HARNESS_FILES = ["eslint-plugin.mjs", "oxlint-plugin.mjs", "stylelint-plugin.mjs"];
+const ENFORCEMENT_DEPENDENCIES = [
+  "@babel/core",
+  "@babel/eslint-parser",
+  "color-name",
+  "eslint",
+  "oxlint",
+  "postcss",
+  "postcss-selector-parser",
+  "postcss-value-parser",
+  "stylelint",
+];
 
 async function exists(filePath) {
   try {
@@ -39,6 +53,26 @@ async function readJson(filePath) {
 
 async function readTemplate(name) {
   return readFile(path.join(TEMPLATE_ROOT, name), "utf8");
+}
+
+async function bundledCheckerFiles() {
+  const files = [{
+    path: ".agents/css-modules-harness/versions.json",
+    content: await readFile(path.join(SKILL_ROOT, "versions.json"), "utf8"),
+  }];
+  for (const name of SCRIPT_ROOT_FILES) {
+    files.push({
+      path: `.agents/css-modules-harness/scripts/${name}`,
+      content: await readFile(path.join(SCRIPT_ROOT, name), "utf8"),
+    });
+  }
+  for (const name of HARNESS_FILES) {
+    files.push({
+      path: `.agents/css-modules-harness/harness/${name}`,
+      content: await readFile(path.join(HARNESS_ROOT, name), "utf8"),
+    });
+  }
+  return files;
 }
 
 function render(template, variables, templateName) {
@@ -313,6 +347,10 @@ export async function planSetup({
     desiredFiles.push(...rendered.files);
   }
 
+  if (profile.enforcement) {
+    desiredFiles.push(...(await bundledCheckerFiles()));
+  }
+
   const { changes, conflicts } = await classifyDesiredFiles(resolvedRoot, desiredFiles, {
     allowReplace: mode === "migrate",
   });
@@ -322,7 +360,10 @@ export async function planSetup({
     profile: storedProfile,
     changes,
     conflicts,
-    dependencies: mode === "bootstrap" ? ["classix", "vite-css-modules"] : [],
+    dependencies: [
+      ...(mode === "bootstrap" ? ["classix", "vite-css-modules"] : []),
+      ...(profile.enforcement ? ENFORCEMENT_DEPENDENCIES : []),
+    ],
     commands: Object.entries(storedProfile.commands).map(([id, command]) => ({ id, command })),
   };
 }
