@@ -87,11 +87,15 @@ Make the smallest change consistent with the project contract and the rules belo
 
 **Complete when:** the source change contains no unclassified style or state channel and introduces no silent project-wide decision.
 
-### 4. Verify
+### 4. Static verification
 
 Run the profile's applicable `css:generate`, `css:types`, `css:check`, and `css:verify` commands. The last two are optional and exist only when the project has CSS-specific checks.
 
-Do not run generic application `lint`, `test`, `build`, or `dev` commands merely because this is a styling edit. If the CSS contract cannot be verified by a recorded command or runtime entry, report that part as unverified.
+Do not run generic application `lint`, `test`, `build`, or `dev` commands merely because this is a styling edit. If the CSS contract cannot be verified by a recorded command, report that part as unverified.
+
+**Complete when:** configured CSS declaration, type, and contract checks pass, and pre-existing failures are separated from failures introduced by the edit.
+
+### 5. Runtime verification
 
 Observe runtime behavior through the project's existing browser, Storybook, preview, or component-test entry. Static checks alone never prove visual verification. Select applicable cases from the profile:
 
@@ -111,9 +115,17 @@ Inspect the DOM contract with the visible output:
 - caller `className` remains present and custom properties hold expected runtime values;
 - focus and keyboard behavior match the product contract.
 
-**Complete when:** configured static checks pass, applicable runtime behavior is observed, and every unverified case is named.
+Distinguish three kinds of evidence in the report:
 
-### 5. Report
+- **DOM state:** attributes, classes, and custom properties;
+- **accessibility behavior:** focus, keyboard activation, accessible name, and announcements;
+- **visual output:** computed cascade, themes, viewports, and user preferences.
+
+Use only existing project runtime infrastructure during an ordinary edit. Do not install Storybook, Playwright, visual-regression tooling, or another runner unless the user requested that infrastructure change.
+
+**Complete when:** applicable runtime behavior is observed through an existing entry, and every unavailable dimension is named rather than inferred.
+
+### 6. Report
 
 Report changed behavior, commands run, runtime cases observed, unverified cases, and pre-existing failures separately.
 

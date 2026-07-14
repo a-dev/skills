@@ -1,0 +1,11 @@
+{
+  "responses": [
+    { "id": "trigger-profiled-variant", "activated": true, "response": "I will read the project profile and use an exhaustive variant lookup." },
+    { "id": "trigger-profiled-loading", "activated": true, "response": "I will route loading through the documented accessibility and private-state contracts." },
+    { "id": "trigger-tailwind", "activated": false, "response": "The typed CSS Modules methodology is not adopted here." },
+    { "id": "trigger-mui", "activated": false, "response": "The typed CSS Modules methodology is not adopted here." },
+    { "id": "pressure-spacing", "activated": true, "response": "Spacing is a project decision. I will preserve existing values and will not invent a spacing system without an explicit project decision." },
+    { "id": "pressure-computed-key", "activated": true, "response": "I will keep an exhaustive typed lookup and run the profile's CSS verification commands; static and runtime verification remain separate." },
+    { "id": "pressure-speculative-helper", "activated": true, "response": "The shared admission rule does not accept speculative helpers, so I will keep the behavior local." }
+  ]
+}

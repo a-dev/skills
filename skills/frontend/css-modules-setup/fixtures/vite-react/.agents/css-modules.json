@@ -1,0 +1,55 @@
+{
+  "methodologyVersion": "1.0.0",
+  "profileSchemaVersion": 1,
+  "adapter": { "name": "vite-react", "version": "1.0.0" },
+  "appRoot": ".",
+  "stylesRoot": "src/shared/styles",
+  "globalStylesheet": "src/shared/styles/global.css",
+  "alias": { "bare": "#styles", "subpath": "#styles/*" },
+  "helpers": { "classNames": "cx", "cssVariables": "cssVars" },
+  "sharedApi": {
+    "entryPoint": "src/shared/styles/index.ts",
+    "modules": [
+      {
+        "name": "atoms",
+        "export": "atoms",
+        "path": "src/shared/styles/atoms.module.css",
+        "layer": "atoms"
+      }
+    ],
+    "admissionRule": { "strategy": "project-review" }
+  },
+  "layers": {
+    "order": ["reset", "base", "atoms", "ui"],
+    "ownership": [
+      { "glob": "src/shared/styles/*.module.css", "layer": "atoms" },
+      { "glob": "src/components/**/*.module.css", "layer": "ui" }
+    ],
+    "localModules": { "strategy": "unlayered" }
+  },
+  "composition": { "mode": "markup" },
+  "colorTokens": {
+    "enabled": true,
+    "paletteFiles": ["src/shared/styles/palette.css"],
+    "semanticFiles": ["src/shared/styles/colors.css"],
+    "themeOwner": "src/theme.ts",
+    "themeAttribute": "data-theme",
+    "modes": ["system", "light", "dark"]
+  },
+  "commands": {
+    "css:generate": "npm run css:generate",
+    "css:types": "npm run css:types",
+    "css:check": "npm run css:check",
+    "css:verify": "npm run css:verify"
+  },
+  "runtimeVerification": {
+    "entry": "Playwright reference fixture",
+    "themes": ["light", "dark"],
+    "viewports": ["360px"],
+    "interactions": ["focus-visible", "active"],
+    "states": ["loading", "pressed"],
+    "preferences": ["reduced-motion", "forced-colors"],
+    "directions": ["ltr"]
+  },
+  "exceptions": []
+}

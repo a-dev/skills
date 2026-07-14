@@ -356,6 +356,12 @@
         "viewports": {
           "$ref": "#/$defs/stringArray"
         },
+        "interactions": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "states": {
+          "$ref": "#/$defs/stringArray"
+        },
         "preferences": {
           "$ref": "#/$defs/stringArray"
         },

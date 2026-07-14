@@ -47,13 +47,14 @@ const PROFILE_ROOT_KEYS = new Set([
   "extensions",
 ]);
 
-function finding(id, status, detail, expected, actual) {
+function finding(id, status, detail, expected, actual, verifyCommand) {
   return {
     id,
     status,
     detail,
     ...(expected === undefined ? {} : { expected }),
     ...(actual === undefined ? {} : { actual }),
+    ...(verifyCommand === undefined ? {} : { verifyCommand }),
   };
 }
 
@@ -319,7 +320,14 @@ async function detectPackageManager(root) {
   const selected = packageManagerField ?? managers[0];
   return selected
     ? finding("project.package-manager", "aligned", selected, selected, selected)
-    : finding("project.package-manager", "not-verifiable", "No package-manager marker found");
+    : finding(
+        "project.package-manager",
+        "not-verifiable",
+        "No package-manager marker found",
+        undefined,
+        undefined,
+        'node -p "require(\'./package.json\').packageManager"',
+      );
 }
 
 async function walkSources(directory, output = []) {
@@ -444,6 +452,48 @@ async function collectStaticConfigText(root, appRoot, viteConfigs) {
   return texts.join("\n");
 }
 
+async function collectCiFiles(root) {
+  const candidates = [];
+  const workflowRoot = path.join(root, ".github", "workflows");
+
+  if (await exists(workflowRoot)) {
+    candidates.push(
+      ...(await walkMatchingFiles(workflowRoot, (filePath) => /\.ya?ml$/i.test(filePath))),
+    );
+  }
+
+  for (const fileName of [".gitlab-ci.yml", "azure-pipelines.yml", "bitbucket-pipelines.yml"]) {
+    const candidate = path.join(root, fileName);
+    if (await exists(candidate)) {
+      candidates.push(candidate);
+    }
+  }
+
+  return Promise.all(
+    [...new Set(candidates)].sort().map(async (filePath) => ({
+      path: filePath,
+      text: await readText(filePath),
+    })),
+  );
+}
+
+function patchCssModulesIdentifiers(source) {
+  const identifiers = new Set();
+
+  for (const match of source.matchAll(
+    /import\s*\{([^}]*)\}\s*from\s*["']vite-css-modules["']/g,
+  )) {
+    for (const specifier of match[1].split(",")) {
+      const alias = specifier.trim().match(/^patchCssModules(?:\s+as\s+([\w$]+))?$/);
+      if (alias) {
+        identifiers.add(alias[1] ?? "patchCssModules");
+      }
+    }
+  }
+
+  return [...identifiers];
+}
+
 export async function auditProject({ root = process.cwd(), profilePath = ".agents/css-modules.json" } = {}) {
   const resolvedRoot = path.resolve(root);
   const findings = [await detectPackageManager(resolvedRoot)];
@@ -471,6 +521,9 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
           "project.app-root",
           "not-verifiable",
           `Candidate application found at ${path.relative(resolvedRoot, path.dirname(candidateConfigs[0]))}; record it in the profile`,
+          undefined,
+          undefined,
+          "node scripts/audit.mjs --format human --profile .agents/css-modules.json",
         ),
       );
     }
@@ -515,6 +568,9 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
         "profile.adapter-version",
         "not-verifiable",
         `No executable adapter is bundled for ${profile.adapter.name}@${profile.adapter.version}`,
+        undefined,
+        undefined,
+        profile.commands?.["css:verify"] ?? "node scripts/setup.mjs verify --format human",
       ),
     );
   } else {
@@ -574,8 +630,12 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
     }
 
     viteText = viteConfigs.length === 1 ? await readText(viteConfigs[0]) : "";
+    const patchIdentifiers = patchCssModulesIdentifiers(viteText);
+    const patchCallVisible = patchIdentifiers.some((identifier) =>
+      new RegExp(`\\b${escapeRegExp(identifier)}\\s*\\(`).test(viteText),
+    );
     findings.push(
-      /patchCssModules\s*\(/.test(viteText)
+      patchCallVisible
         ? finding("vite.patch-css-modules", "aligned", "patchCssModules is configured")
         : finding("vite.patch-css-modules", "missing", "patchCssModules is absent"),
     );
@@ -606,6 +666,9 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
         "adapter.build-contract",
         "not-verifiable",
         `Use the ${profile.adapter.name} adapter's own executable verifier`,
+        undefined,
+        undefined,
+        profile.commands["css:verify"] ?? profile.commands["css:types"],
       ),
     );
   }
@@ -757,7 +820,14 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
     findings.push(
       staticConfigText.includes(alias)
         ? finding(id, "aligned", alias)
-        : finding(id, "not-verifiable", `Alias is not statically visible: ${alias}`),
+        : finding(
+            id,
+            "not-verifiable",
+            `Alias is not statically visible: ${alias}`,
+            undefined,
+            undefined,
+            profile.commands["css:verify"] ?? profile.commands["css:types"],
+          ),
     );
   }
 
@@ -899,11 +969,60 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
       : finding("commands.profile", "missing", "No usable CSS-harness commands recorded"),
   );
 
+  const ciFiles = await collectCiFiles(resolvedRoot);
+  if (ciFiles.length === 0) {
+    findings.push(
+      finding("ci.configuration", "missing", "No supported CI configuration was found"),
+    );
+  } else {
+    const generateCommand = profile.commands["css:generate"];
+    const typesCommand = profile.commands["css:types"];
+    const matchingFile = ciFiles.find(
+      ({ text }) => text.includes(generateCommand) || text.includes(typesCommand),
+    );
+
+    if (!matchingFile) {
+      findings.push(
+        finding(
+          "ci.css-order",
+          "drifted",
+          "CI exists but does not run the recorded CSS generation and type commands",
+          [generateCommand, typesCommand],
+          [],
+        ),
+      );
+    } else {
+      const generateIndex = matchingFile.text.indexOf(generateCommand);
+      const typesIndex = matchingFile.text.indexOf(typesCommand);
+      const ordered = generateIndex >= 0 && typesIndex > generateIndex;
+      findings.push(
+        ordered
+          ? finding(
+              "ci.css-order",
+              "aligned",
+              `${path.relative(resolvedRoot, matchingFile.path)} generates declarations before typechecking`,
+            )
+          : finding(
+              "ci.css-order",
+              "drifted",
+              "CI must run the recorded CSS generation command before the CSS type command",
+              [generateCommand, typesCommand],
+              matchingFile.text.includes(typesCommand) && matchingFile.text.includes(generateCommand)
+                ? [typesCommand, generateCommand]
+                : [generateCommand, typesCommand].filter((command) => matchingFile.text.includes(command)),
+            ),
+      );
+    }
+  }
+
   findings.push(
     finding(
       "types.freshness",
       "not-verifiable",
       `Run explicit verify mode: ${profile.commands["css:generate"]} && ${profile.commands["css:types"]}`,
+      undefined,
+      undefined,
+      `${profile.commands["css:generate"]} && ${profile.commands["css:types"]}`,
     ),
   );
 
@@ -912,6 +1031,9 @@ export async function auditProject({ root = process.cwd(), profilePath = ".agent
       "runtime.behavior",
       "not-verifiable",
       "Static audit does not execute Vite or a browser; run explicit verify mode",
+      undefined,
+      undefined,
+      profile.commands["css:verify"] ?? "node scripts/setup.mjs verify --format human",
     ),
   );
 
@@ -951,6 +1073,15 @@ export function formatHuman(result) {
 
   for (const item of result.findings) {
     lines.push(`${item.status.toUpperCase().padEnd(width)}  ${item.id.padEnd(28)}  ${item.detail}`);
+    if (item.expected !== undefined) {
+      lines.push(`${"".padEnd(width)}  ${"expected".padEnd(28)}  ${JSON.stringify(item.expected)}`);
+    }
+    if (item.actual !== undefined) {
+      lines.push(`${"".padEnd(width)}  ${"actual".padEnd(28)}  ${JSON.stringify(item.actual)}`);
+    }
+    if (item.verifyCommand) {
+      lines.push(`${"".padEnd(width)}  ${"verify".padEnd(28)}  ${item.verifyCommand}`);
+    }
   }
 
   lines.push("", `Result: ${result.status}`);
@@ -958,7 +1089,12 @@ export function formatHuman(result) {
 }
 
 function parseArgs(argv) {
-  const options = { root: process.cwd(), profilePath: ".agents/css-modules.json", format: "human" };
+  const options = {
+    root: process.cwd(),
+    profilePath: ".agents/css-modules.json",
+    format: "human",
+    check: false,
+  };
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -968,6 +1104,8 @@ function parseArgs(argv) {
       options.profilePath = argv[++index];
     } else if (argument === "--format") {
       options.format = argv[++index];
+    } else if (argument === "--check") {
+      options.check = true;
     } else if (argument === "--help" || argument === "-h") {
       options.help = true;
     } else {
@@ -992,6 +1130,7 @@ function usage() {
     "--root <path>       project root; defaults to cwd",
     "--profile <path>    profile path relative to root",
     "--format <format>   human or json",
+    "--check             CI mode; exit non-zero for missing, drifted, or ambiguous findings",
   ].join("\n");
 }
 

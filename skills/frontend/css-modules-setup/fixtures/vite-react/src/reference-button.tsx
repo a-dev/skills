@@ -1,13 +1,17 @@
 import type { ComponentPropsWithoutRef } from "react";
-import { {{CLASS_HELPER}}, {{CSS_VARIABLE_HELPER}} } from "{{SHARED_ALIAS}}";
+import { cx, cssVars } from "#styles";
 import styles from "./reference-button.module.css";
 
 type Variant = "primary" | "secondary";
 
-type ReferenceButtonProps = Omit<ComponentPropsWithoutRef<"button">, "style"> & {
-  variant: Variant;
+type ReferenceButtonProps = Omit<
+  ComponentPropsWithoutRef<"button">,
+  "aria-pressed" | "style"
+> & {
   loading?: boolean;
+  pressed: boolean;
   progress?: number;
+  variant: Variant;
 };
 
 const VARIANT_CLASS = {
@@ -16,9 +20,10 @@ const VARIANT_CLASS = {
 } satisfies Record<Variant, string>;
 
 export function ReferenceButton({
-  variant,
   loading = false,
+  pressed,
   progress = 0,
+  variant,
   className,
   disabled,
   children,
@@ -29,11 +34,12 @@ export function ReferenceButton({
   return (
     <button
       {...buttonProps}
-      className={{{CLASS_HELPER}}(styles.root, VARIANT_CLASS[variant], className)}
-      disabled={disabled || loading}
-      data-loading={loading || undefined}
       aria-busy={loading || undefined}
-      style={{{CSS_VARIABLE_HELPER}}({ "--_progress": normalizedProgress })}
+      aria-pressed={pressed}
+      className={cx(styles.root, VARIANT_CLASS[variant], className)}
+      data-loading={loading || undefined}
+      disabled={disabled || loading}
+      style={cssVars({ "--_progress": normalizedProgress })}
     >
       <span aria-hidden="true" className={styles.spinner} />
       <span className={styles.label}>{children}</span>

@@ -2,6 +2,6 @@ import type { CSSProperties } from "react";
 
 type CssVariables = Record<`--${string}`, string | number>;
 
-export function {{CSS_VARIABLE_HELPER}}(variables: CssVariables): CSSProperties {
+export function cssVars(variables: CssVariables): CSSProperties {
   return variables as CSSProperties;
 }

@@ -1,6 +1,8 @@
 # css-modules skill evaluations
 
-Use these cases when changing the `css-modules` skill's description or discipline rules.
+Use these cases when changing the `css-modules` skill's description or discipline rules. The machine-readable source is `evals/css-modules.json`; score recorded or live host responses with `skills/frontend/css-modules-setup/scripts/evaluate.mjs --responses <path>`.
+
+CI scores the checked-in reference responses to keep the case schema and regression categories deterministic. A release run may replace that response file with fresh model/host output without changing the scorer.
 
 ## Should activate
 

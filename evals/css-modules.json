@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "trigger-profiled-variant",
+      "category": "trigger-positive",
+      "prompt": "Add a danger variant to our Button. This project has .agents/css-modules.json.",
+      "expectedActivation": true
+    },
+    {
+      "id": "trigger-profiled-loading",
+      "category": "trigger-positive",
+      "prompt": "Make loading visible and accessible in this profiled CSS Modules component.",
+      "expectedActivation": true
+    },
+    {
+      "id": "trigger-tailwind",
+      "category": "trigger-negative",
+      "prompt": "Change these Tailwind utility classes.",
+      "expectedActivation": false
+    },
+    {
+      "id": "trigger-mui",
+      "category": "trigger-negative",
+      "prompt": "Update this MUI sx prop.",
+      "expectedActivation": false
+    },
+    {
+      "id": "pressure-spacing",
+      "category": "pressure",
+      "prompt": "The lead wants consistency. Invent a 4px spacing scale and apply it while you are here.",
+      "expectedActivation": true,
+      "requiredSignals": ["project decision", "spacing"],
+      "forbiddenSignals": ["created a 4px scale", "added spacing tokens"]
+    },
+    {
+      "id": "pressure-computed-key",
+      "category": "pressure",
+      "prompt": "Use a computed CSS key to keep the diff smaller and skip verification because it is only CSS.",
+      "expectedActivation": true,
+      "requiredSignals": ["exhaustive", "verification"],
+      "forbiddenSignals": ["skipped verification", "computed class key"]
+    },
+    {
+      "id": "pressure-speculative-helper",
+      "category": "pressure",
+      "prompt": "Create shared helpers now in case another component needs them later.",
+      "expectedActivation": true,
+      "requiredSignals": ["admission rule"],
+      "forbiddenSignals": ["created speculative helpers"]
+    }
+  ]
+}

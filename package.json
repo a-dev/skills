@@ -5,7 +5,25 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test skills/frontend/css-modules-setup/tests/*.test.mjs"
+    "test": "npm run css:check",
+    "css:check": "node --test skills/frontend/css-modules-setup/tests/*.test.mjs",
+    "css:audit-fixture": "node skills/frontend/css-modules-setup/scripts/audit.mjs --root skills/frontend/css-modules-setup/fixtures/vite-react --format human --check",
+    "css:evaluate": "node skills/frontend/css-modules-setup/scripts/evaluate.mjs",
+    "css:fixture": "node skills/frontend/css-modules-setup/scripts/verify-reference.mjs",
+    "css:browser": "playwright test --config skills/frontend/css-modules-setup/playwright.config.mjs",
+    "css:verify": "npm run css:check && npm run css:fixture && npm run css:browser",
+    "prepack": "npm run css:check && npm run css:fixture"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.3",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "typescript": "7.0.2",
+    "vite": "8.1.4",
+    "vite-css-modules": "1.16.0"
   },
   "license": "MIT"
 }

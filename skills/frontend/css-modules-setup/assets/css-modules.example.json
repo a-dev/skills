@@ -81,6 +81,8 @@
     "entry": "storybook",
     "themes": ["system", "light", "dark"],
     "viewports": ["360px", "768px", "1280px"],
+    "interactions": ["default", "hover", "focus-visible", "active"],
+    "states": ["disabled", "loading", "selected", "error"],
     "preferences": ["reduced-motion", "forced-colors"],
     "directions": ["ltr"]
   },

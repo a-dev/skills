@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { auditProject, validateProfile } from "../scripts/audit.mjs";
+import { auditProject, formatHuman, validateProfile } from "../scripts/audit.mjs";
 
 async function write(root, relativePath, contents) {
   const filePath = path.join(root, relativePath);
@@ -37,6 +37,9 @@ const PACKAGE_MANAGERS = {
 };
 
 async function createFixture({
+  ci = "aligned",
+  configName = "vite.config.ts",
+  configShape = "object",
   layerOrder = ["foundation", "components"],
   packageManager = "npm",
 } = {}) {
@@ -66,8 +69,16 @@ async function createFixture({
   );
   await write(
     root,
-    "vite.config.ts",
-    `
+    configName,
+    configShape === "function"
+      ? `
+import { patchCssModules as typedCssModules } from "vite-css-modules";
+export default () => ({
+  css: { modules: { localsConvention: "camelCaseOnly" } },
+  plugins: [typedCssModules({ generateSourceTypes: true })],
+});
+`
+      : `
 import { patchCssModules } from "vite-css-modules";
 export default {
   css: { modules: { localsConvention: "camelCaseOnly" } },
@@ -87,6 +98,17 @@ export default {
   );
   await write(root, "src/styles/index.ts", 'export { default as atoms } from "./atoms.module.css";\n');
   await write(root, "src/main.tsx", 'import "#shared/global.css";\n');
+  if (ci !== "missing") {
+    const steps =
+      ci === "aligned"
+        ? "npm run css:generate\n          npm run css:types"
+        : "npm run css:types\n          npm run css:generate";
+    await write(
+      root,
+      ".github/workflows/css.yml",
+      `name: css\nsteps:\n  - run: |\n          ${steps}\n`,
+    );
+  }
   await write(
     root,
     ".agents/css-modules.json",
@@ -152,6 +174,26 @@ test("accepts a differently named coherent topology and does not write", async (
     assert.equal(result.findings.find(({ id }) => id === "layers.order")?.status, "aligned");
     assert.equal(result.findings.find(({ id }) => id === "layers.module.atoms")?.status, "aligned");
     assert.ok(!result.findings.some(({ status }) => ["missing", "drifted", "ambiguous"].includes(status)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("accepts the article reference layer topology", async () => {
+  const root = await createFixture();
+
+  try {
+    await updateProfile(root, (selectedProfile) => {
+      selectedProfile.layers.order = ["reset", "base", "atoms", "ui"];
+      selectedProfile.layers.ownership[0].layer = "atoms";
+      selectedProfile.sharedApi.modules[0].layer = "atoms";
+    });
+    await write(root, "src/styles/global.css", "@layer reset, base, atoms, ui;\n");
+    await write(root, "src/styles/atoms.module.css", "@layer atoms { .cluster { display: flex; } }\n");
+
+    const result = await auditProject({ root });
+    assert.equal(result.findings.find(({ id }) => id === "layers.order")?.status, "aligned");
+    assert.equal(result.findings.find(({ id }) => id === "layers.module.atoms")?.status, "aligned");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -385,5 +427,98 @@ test("reports profile paths that escape the project root", async () => {
     );
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("returns deterministic findings for unchanged input", async () => {
+  const root = await createFixture();
+
+  try {
+    assert.deepEqual(await auditProject({ root }), await auditProject({ root }));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("human output contains every JSON finding id and status", async () => {
+  const root = await createFixture();
+
+  try {
+    const result = await auditProject({ root });
+    const human = formatHuman(result);
+
+    for (const finding of result.findings) {
+      assert.match(human, new RegExp(finding.id.replaceAll(".", "\\.")));
+      assert.match(human, new RegExp(finding.status.toUpperCase()));
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("every not-verifiable finding provides an exact follow-up command", async () => {
+  const root = await createFixture();
+
+  try {
+    const result = await auditProject({ root });
+    const unverifiable = result.findings.filter(({ status }) => status === "not-verifiable");
+
+    assert.ok(unverifiable.length > 0);
+    for (const finding of unverifiable) {
+      assert.equal(typeof finding.verifyCommand, "string", finding.id);
+      assert.ok(finding.verifyCommand.length > 0, finding.id);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+for (const configName of [
+  "vite.config.ts",
+  "vite.config.mts",
+  "vite.config.js",
+  "vite.config.mjs",
+  "vite.config.cjs",
+  "vite.config.cts",
+]) {
+  test(`audits ${configName}`, async () => {
+    const root = await createFixture({ configName });
+
+    try {
+      const result = await auditProject({ root });
+      assert.equal(result.findings.find(({ id }) => id === "vite.config")?.status, "aligned");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test("accepts an aliased patch plugin in a function-form Vite config", async () => {
+  const root = await createFixture({ configShape: "function" });
+
+  try {
+    const result = await auditProject({ root });
+    assert.equal(
+      result.findings.find(({ id }) => id === "vite.patch-css-modules")?.status,
+      "aligned",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("distinguishes missing CI from a broken CSS command order", async () => {
+  const missingRoot = await createFixture({ ci: "missing" });
+  const brokenRoot = await createFixture({ ci: "broken" });
+
+  try {
+    const missing = await auditProject({ root: missingRoot });
+    const broken = await auditProject({ root: brokenRoot });
+
+    assert.equal(missing.findings.find(({ id }) => id === "ci.configuration")?.status, "missing");
+    assert.equal(broken.findings.find(({ id }) => id === "ci.css-order")?.status, "drifted");
+  } finally {
+    await rm(missingRoot, { recursive: true, force: true });
+    await rm(brokenRoot, { recursive: true, force: true });
   }
 });

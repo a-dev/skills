@@ -1,9 +1,9 @@
-@layer {{UI_LAYER}} {
+@layer ui {
   .root {
     display: inline-flex;
     align-items: center;
-    border-width: medium;
-    border-color: currentcolor;
+    color: var(--color-action-fg);
+    background: var(--color-action-bg);
   }
 
   .root[data-loading] .spinner {
@@ -16,7 +16,6 @@
   }
 
   .spinner {
-    display: inline-block;
     inline-size: 1em;
     block-size: 1em;
     border-radius: 50%;
@@ -30,14 +29,12 @@
   }
 
   .variant-primary {
-    border-style: solid;
+    border: 2px solid var(--color-action-border);
   }
 
   .variant-secondary {
-    border-style: dashed;
+    border: 2px dashed var(--color-action-border);
   }
-
-  {{REFERENCE_BUTTON_COLOR_RULES}}
 
   @media (prefers-reduced-motion: reduce) {
     .spinner {
@@ -47,7 +44,7 @@
 
   @media (forced-colors: active) {
     .root {
-      border: 1px solid ButtonText;
+      border-color: ButtonText;
     }
 
     .spinner {

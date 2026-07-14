@@ -24,6 +24,16 @@ Every run starts with `audit`, then proceeds only into the mode the user request
 
 A generic “set this up” request authorizes `bootstrap` or `align`, not `migrate`. Inspection, audit, and verification requests never authorize mutation.
 
+Use the bundled setup planner for a deterministic plan:
+
+```sh
+node <css-modules-setup-skill>/scripts/setup.mjs <mode> \
+  --root <project-root> \
+  --format human
+```
+
+The planner is read-only by default. `bootstrap`, `align`, and `migrate` accept `--apply` only after the printed plan is reviewed. `migrate` additionally requires `--authorize-migrate`; `audit` and `verify` reject `--apply`.
+
 ## Step 1 — establish a read-only baseline
 
 Read `references/discovery.md`, then:
@@ -41,7 +51,8 @@ Run the bundled audit when available:
 ```sh
 node <css-modules-setup-skill>/scripts/audit.mjs \
   --root <project-root> \
-  --format human
+  --format human \
+  --check
 ```
 
 The audit parses files but never imports executable Vite or application configuration. A check that cannot be proven statically reports `not-verifiable` with a follow-up command.
@@ -129,7 +140,7 @@ Rules:
 - stop on incompatible drift unless `migrate` was explicitly selected;
 - report each touched file immediately if a later phase fails.
 
-Use the files under `assets/templates/` as parameterized source material. Replace placeholders with selected profile values; do not copy optional files merely to satisfy an audit marker.
+Use the files under `assets/templates/` as parameterized source material through `scripts/setup.mjs`. In `bootstrap`, pass the developer-reviewed values with `--inputs <json-path>`. An unresolved required input returns `needs-input`; it never becomes an empty class or invented visual value.
 
 The palette and semantic color templates apply only when the developer selects the article's color contract. Visual values require project input.
 
@@ -137,7 +148,7 @@ The palette and semantic color templates apply only when the developer selects t
 
 ## Step 5 — write the project contract
 
-Copy `assets/css-modules.schema.json` to `.agents/css-modules.schema.json`, then create `.agents/css-modules.json` from the selected and discovered values.
+Use the setup planner to copy `assets/css-modules.schema.json` to `.agents/css-modules.schema.json` and create `.agents/css-modules.json` from the selected and discovered values. Pass a reviewed greenfield profile with `--profile-source <json-path>`.
 
 The profile records decisions the daily skill cannot safely rediscover. Executable configuration remains authoritative.
 
@@ -162,6 +173,8 @@ Run:
 3. `commands["css:check"]`, when the project records a CSS-specific static check;
 4. `commands["css:verify"]`, or the bundled disposable reference fixture, when recorded;
 5. the read-only audit and setup dry-run again.
+
+Read `references/reference-fixture.md` when the selected project has no existing CSS-specific runtime fixture or when validating changes to this harness itself.
 
 Do not add or run generic application `lint`, `test`, `build`, or `dev` commands merely because setup is verifying CSS. If CSS behavior cannot be isolated, report it as `not-verifiable` and name the project command a developer may choose to run.
 

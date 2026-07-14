@@ -86,14 +86,31 @@ Use `--format json` for machine-readable output. Exit codes are:
 - `1`: missing or drifted configuration;
 - `2`: ambiguity, invalid profile, or audit failure.
 
-### Development checks
+Add `--check` when CI runs the audit. It preserves the read-only behavior and uses the exit codes above as the CI contract.
 
-The repository uses Node's built-in test runner:
+### Setup planner
+
+The bundled planner exposes the five setup modes and prints a dry-run by default:
 
 ```sh
-npm test
+node skills/frontend/css-modules-setup/scripts/setup.mjs bootstrap \
+  --root /path/to/project \
+  --profile-source /path/to/project/selected-profile.json \
+  --inputs /path/to/project/setup-inputs.json
 ```
 
-The fixtures cover npm, pnpm, Yarn, and Bun; differently named coherent layers; ownership and version drift; ambiguous multi-app discovery; relative global imports; semantic-color boundaries; and byte-for-byte read-only behavior.
+Only `bootstrap`, `align`, and explicitly authorized `migrate` plans accept `--apply`. Existing files with different content are conflicts in bootstrap/align; migrate may replace only files shown in its reviewed plan and only while their content still matches the baseline.
 
-Skill evaluation scenarios (activation, non-activation, and pressure cases) live under `evals/`. They are author material and are not installed with the skills.
+### Development checks
+
+Install the pinned development dependencies, then run the full CSS harness:
+
+```sh
+npm ci
+npx playwright install chromium
+npm run css:verify
+```
+
+For narrower loops, use `css:check`, `css:audit-fixture`, `css:fixture`, or `css:browser`. The fixtures cover npm, pnpm, Yarn, and Bun; reference and differently named layer maps; Vite config variants; ownership, CI, and version drift; ambiguous multi-app discovery; safe/idempotent setup; declarations and TypeScript; alias composition; semantic colors; DOM state; accessibility behavior; and browser-computed cascade results.
+
+Skill evaluation scenarios live under `evals/`. `evals/css-modules.json` is the machine-readable prompt contract, and `scripts/evaluate.mjs` scores recorded or live host responses by trigger and pressure category. Evaluation assets are author material and are not installed with the skills.

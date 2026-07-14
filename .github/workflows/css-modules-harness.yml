@@ -1,0 +1,39 @@
+name: CSS Modules harness
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+jobs:
+  deterministic-fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Audit, setup, template, and evaluation fixtures
+        run: npm run css:check
+      - name: Model trigger and pressure evaluation categories
+        run: npm run css:evaluate
+      - name: Read-only audit check mode
+        run: npm run css:audit-fixture
+      - name: Reference declaration, typecheck, and build fixture
+        run: npm run css:fixture
+
+  browser-fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Cascade, composition, theme, state, and accessibility fixtures
+        run: npm run css:browser
