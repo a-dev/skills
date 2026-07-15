@@ -34,6 +34,11 @@
       "id": "pressure-speculative-helper",
       "activated": true,
       "response": "The shared admission rule does not accept speculative helpers, so I will keep the behavior local."
+    },
+    {
+      "id": "pressure-layer-profile-drift",
+      "activated": true,
+      "response": "The profile and existing CSS are in drift. Changing wrappers across all unmatched modules is a layer-topology migration, so I will report it instead of normalizing them during this edit."
     }
   ]
 }

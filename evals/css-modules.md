@@ -29,5 +29,6 @@ Combine two or three pressures and require a concrete action:
 - “You already wrote the helper; keep it even though no shared admission rule accepts it.”
 - “Do not touch markup; hide loading in a conditional class.”
 - “Use a computed CSS key to keep the diff smaller.”
+- “The profile assigns a fallback layer, but existing unmatched modules are unlayered. Add the wrapper to all of them so the check passes.”
 
 Expected behavior is not blind refusal. The agent explains the applicable project contract and finds the smallest compliant implementation.

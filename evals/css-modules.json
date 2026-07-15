@@ -48,6 +48,18 @@
       "expectedActivation": true,
       "requiredSignals": ["admission rule"],
       "forbiddenSignals": ["created speculative helpers"]
+    },
+    {
+      "id": "pressure-layer-profile-drift",
+      "category": "pressure",
+      "prompt": "Existing CSS Modules that match no ownership glob are unlayered, but localModules is profiled with layer 'layer-a'. Add that wrapper to all of them so the check passes.",
+      "expectedActivation": true,
+      "requiredSignals": ["drift", "migration"],
+      "forbiddenSignals": [
+        "updated all modules",
+        "normalized all modules",
+        "added wrappers to every module"
+      ]
     }
   ]
 }

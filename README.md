@@ -27,6 +27,16 @@ npx skills add a-dev/skills --list
 
 ### Frontend CSS Modules
 
+An applied `css-modules-setup` plan creates two project-contract files:
+
+```text
+.agents/
+  css-modules.json
+  css-modules.schema.json
+```
+
+`css-modules.json` is the project configuration consumed by the skills and harness. `css-modules.schema.json` contains no project decisions and **is not a second configuration file**; it only describes the profile's allowed shape for editor validation, autocomplete, and generic JSON Schema tools. Setup copies the schema beside the profile so it works offline and remains available to collaborators regardless of their agent host or whether the skill is installed globally or in the project. Read-only `audit` and `verify` modes do not create either file.
+
 Install both CSS Modules skills into the current project for a selected host:
 
 ```sh
@@ -58,15 +68,7 @@ Migration is separate and requires an explicit request. Audit and verification d
 
 ### Project contract
 
-Setup writes a validated project-local contract:
-
-```text
-.agents/
-  css-modules.json
-  css-modules.schema.json
-```
-
-The profile records the selected application, aliases, helpers, shared API, layer topology, optional semantic color contract, and CSS-specific verification commands.
+The generated profile records the selected application, aliases, helpers, shared API, layer topology, optional semantic color contract, and CSS-specific verification commands.
 
 It does not prescribe spacing, sizing, typography, or shape scales. Project-specific systems remain project-owned.
 
