@@ -43,7 +43,7 @@ An applied `css-modules-setup` plan creates two project-contract files:
 
 ## Frontend CSS Modules harness
 
-Vite plus React (Next.js, TanStack Start included) is the only stack with a [tested adapter](skills/frontend/css-modules-setup/adapters/vite-react.md). Anything else needs its own adapter and its own declaration, contract, build, and browser fixtures before it earns the word supported.
+Vite plus React (TanStack Start included) is the only stack with a [tested adapter](skills/frontend/css-modules-setup/adapters/vite-react.md). The methodology itself is portable, but the adapter is not: `patchCssModules` and its generated declarations are Vite plugins, so a non-Vite bundler such as Next.js needs its own adapter and its own declaration, contract, build, and browser fixtures. (Next.js is in the plan)
 
 ### Adoption flow
 
