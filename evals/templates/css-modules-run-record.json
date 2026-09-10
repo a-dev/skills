@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "runId": "",
+  "caseId": "",
+  "skillRevision": { "earlier": null, "revised": null },
+  "fixtureRevision": null,
+  "model": { "provider": null, "id": null, "version": null, "settings": null },
+  "host": { "name": null, "version": null, "os": null },
+  "request": "",
+  "response": null,
+  "activationTrace": { "status": "unavailable", "events": [] },
+  "artifacts": {
+    "patchStatus": "present",
+    "patch": {
+      "format": "file-snapshot",
+      "diff": null,
+      "files": [
+        {
+          "path": "src/Example.module.css",
+          "action": "modified",
+          "before": ".root { display: block; }\n",
+          "after": ".root { display: block; }\n.danger { color: red; }\n"
+        }
+      ]
+    },
+    "changedFiles": ["src/Example.module.css"],
+    "generatedOutputs": ["src/Example.module.css.d.ts"],
+    "generatedFiles": [
+      {
+        "path": "src/Example.module.css.d.ts",
+        "kind": "declaration",
+        "content": "export const root: string;\nexport const danger: string;\n"
+      }
+    ],
+    "domEvidence": [],
+    "artifactEvidence": [
+      {
+        "id": "generated.class-keys",
+        "path": "src/Example.module.css.d.ts",
+        "detail": "replace with the captured declaration artifact"
+      }
+    ]
+  },
+  "commands": [],
+  "finalReport": {
+    "status": "incomplete",
+    "claims": [],
+    "reportEvidence": [],
+    "unverified": ["record not populated"],
+    "preExistingFailures": [],
+    "humanReview": {
+      "semanticSharing": "pending",
+      "reasonableClarification": "pending",
+      "integrationException": "pending"
+    }
+  },
+  "missingEvidence": ["replace example patch/generated content and capture command/report evidence"]
+}

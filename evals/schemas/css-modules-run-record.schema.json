@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://a-dev.example/schemas/css-modules-run-record.schema.json",
+  "title": "CSS Modules behavioral evaluation run record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "caseId",
+    "skillRevision",
+    "fixtureRevision",
+    "model",
+    "host",
+    "request",
+    "activationTrace",
+    "artifacts",
+    "commands",
+    "finalReport",
+    "missingEvidence"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string", "minLength": 1 },
+    "caseId": { "type": "string", "minLength": 1 },
+    "skillRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["earlier", "revised"],
+      "properties": {
+        "earlier": { "type": ["string", "null"] },
+        "revised": { "type": ["string", "null"] }
+      }
+    },
+    "fixtureRevision": { "type": ["string", "null"] },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "id", "version", "settings"],
+      "properties": {
+        "provider": { "type": ["string", "null"] },
+        "id": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"] },
+        "settings": { "type": ["object", "null"] }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "os"],
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"] },
+        "os": { "type": ["string", "null"] }
+      }
+    },
+    "request": { "type": "string", "minLength": 1 },
+    "response": { "type": ["string", "null"] },
+    "activationTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "events"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable"] },
+        "events": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "patchStatus",
+        "patch",
+        "changedFiles",
+        "generatedOutputs",
+        "generatedFiles",
+        "domEvidence",
+        "artifactEvidence"
+      ],
+      "properties": {
+        "patchStatus": { "enum": ["present", "not-applicable", "missing", "broken"] },
+        "patch": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format", "diff", "files"],
+          "properties": {
+            "format": { "enum": ["file-snapshot", "unified-diff", "none"] },
+            "diff": { "type": ["string", "null"] },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["path", "action", "before", "after"],
+                "properties": {
+                  "path": { "type": "string", "minLength": 1 },
+                  "action": { "enum": ["created", "modified", "deleted"] },
+                  "before": { "type": ["string", "null"] },
+                  "after": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        },
+        "changedFiles": { "type": "array", "items": { "type": "string" } },
+        "generatedOutputs": { "type": "array", "items": { "type": "string" } },
+        "generatedFiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "kind", "content"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "kind": { "enum": ["declaration", "map", "build", "other"] },
+              "content": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "domEvidence": { "type": "array", "items": { "type": "object" } },
+        "artifactEvidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "path"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "path": { "type": "string", "minLength": 1 },
+              "detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "command", "status"],
+        "properties": {
+          "name": { "type": "string" },
+          "command": { "type": "string" },
+          "status": { "enum": ["passed", "failed", "unavailable", "not-run"] },
+          "stdout": { "type": "string" },
+          "stderr": { "type": "string" }
+        }
+      }
+    },
+    "finalReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "claims",
+        "reportEvidence",
+        "unverified",
+        "preExistingFailures",
+        "humanReview"
+      ],
+      "properties": {
+        "status": { "enum": ["passed", "failed", "incomplete"] },
+        "claims": { "type": "array", "items": { "type": "string" } },
+        "reportEvidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "supportedBy"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "supportedBy": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        },
+        "unverified": { "type": "array", "items": { "type": "string" } },
+        "preExistingFailures": { "type": "array", "items": { "type": "string" } },
+        "humanReview": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["semanticSharing", "reasonableClarification", "integrationException"],
+          "properties": {
+            "semanticSharing": { "enum": ["pass", "fail", "pending", "not-applicable"] },
+            "reasonableClarification": { "enum": ["pass", "fail", "pending", "not-applicable"] },
+            "integrationException": { "enum": ["pass", "fail", "pending", "not-applicable"] }
+          }
+        }
+      }
+    },
+    "missingEvidence": { "type": "array", "items": { "type": "string" } }
+  }
+}

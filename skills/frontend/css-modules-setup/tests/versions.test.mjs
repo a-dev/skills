@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { validateInput } from "../scripts/contract.mjs";
+
 async function json(relativeUrl) {
   return JSON.parse(await readFile(new URL(relativeUrl, import.meta.url), "utf8"));
 }
@@ -23,10 +25,23 @@ test("package, methodology, schema, adapter, and minimum versions share one cont
   const versions = await json("../versions.json");
   const profile = await json("../assets/css-modules.example.json");
   const packageJson = await json("../../../../package.json");
+  const scorer = await json("../../../../evals/css-modules.json");
+  const behavioral = await json("../../../../evals/cases/css-modules.behavioral.json");
+  const runRecord = await json("../../../../evals/schemas/css-modules-run-record.schema.json");
 
   assert.equal(versions.skillPackageVersion, packageJson.version);
   assert.equal(versions.methodologyVersion, profile.methodologyVersion);
   assert.equal(versions.profileSchemaVersion, profile.profileSchemaVersion);
+  assert.equal(versions.compactSchemaVersion, 1);
+  assert.equal(versions.compactPreset, "vite-react@1");
+  assert.deepEqual(versions.evaluation, {
+    scorerVersion: 2,
+    behavioralCaseVersion: 1,
+    runRecordVersion: 1,
+  });
+  assert.equal(scorer.version, versions.evaluation.scorerVersion);
+  assert.equal(behavioral.version, versions.evaluation.behavioralCaseVersion);
+  assert.equal(runRecord.properties.schemaVersion.const, versions.evaluation.runRecordVersion);
   assert.equal(versions.adapters[profile.adapter.name].version, profile.adapter.version);
   assert.equal(packageJson.devDependencies.oxlint, versions.enforcement.oxlint);
 
@@ -39,6 +54,14 @@ test("package, methodology, schema, adapter, and minimum versions share one cont
       `${dependency} is below ${minimum}`,
     );
   }
+});
+
+test("the compact example validates against its pinned schema and preset", async () => {
+  const compact = await json("../assets/css-modules.compact.example.json");
+  assert.deepEqual(validateInput(compact), []);
+  const presets = await json("../assets/css-modules.presets.json");
+  assert.ok(presets[compact.preset]);
+  assert.equal(compact.version, 1);
 });
 
 test("the published schema requires every conditional field the validator enforces", async () => {

@@ -2,8 +2,9 @@
 // into projects beside the checker scripts, so it must import nothing outside
 // this directory and node built-ins.
 
-import { access, readdir, readFile } from "node:fs/promises";
+import { access, lstat, readdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const SKIPPED_DIRECTORIES = new Set([
   ".git",
@@ -14,26 +15,25 @@ export const SKIPPED_DIRECTORIES = new Set([
   "test-results",
 ]);
 
-const PROFILE_ROOT_KEYS = new Set([
-  "$schema",
-  "methodologyVersion",
-  "profileSchemaVersion",
-  "adapter",
-  "appRoot",
-  "stylesRoot",
-  "globalStylesheet",
-  "alias",
-  "helpers",
-  "sharedApi",
-  "layers",
-  "composition",
-  "colorTokens",
-  "commands",
-  "runtimeVerification",
-  "enforcement",
-  "exceptions",
-  "extensions",
-]);
+const LIB_ROOT = path.dirname(fileURLToPath(import.meta.url));
+
+async function loadProfileSchema() {
+  const candidates = [
+    path.join(LIB_ROOT, "../assets/css-modules.schema.json"),
+    path.join(LIB_ROOT, "../../css-modules.schema.json"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(await readFile(candidate, "utf8"));
+    } catch {
+      // The installed harness keeps the copied schema beside .agents/, while
+      // the source harness reads the canonical asset from ../assets.
+    }
+  }
+  throw new Error("Unable to locate the canonical css-modules.schema.json");
+}
+
+const DEFAULT_PROFILE_SCHEMA = await loadProfileSchema();
 
 export async function exists(filePath) {
   try {
@@ -57,6 +57,92 @@ export function resolveInside(root, relativePath) {
   }
 
   return resolved;
+}
+
+function isContained(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative))
+  );
+}
+
+async function nearestExistingAncestor(filePath) {
+  let candidate = filePath;
+  while (true) {
+    try {
+      await lstat(candidate);
+      return candidate;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      const parent = path.dirname(candidate);
+      if (parent === candidate) return undefined;
+      candidate = parent;
+    }
+  }
+}
+
+/**
+ * Check the complete output manifest before any mutation. This protects the
+ * lexical root check from symlinked parents while intentionally leaving the
+ * final write race to the exclusive/preimage checks in setup.mjs.
+ */
+export async function preflightWriteSet(root, entries) {
+  const lexicalRoot = path.resolve(root);
+  const canonicalRoot = await realpath(lexicalRoot);
+  const collisions = new Map();
+  const errors = [];
+
+  for (const entry of entries) {
+    const destination = resolveInside(lexicalRoot, entry.path);
+    const normalizedPath = path.relative(lexicalRoot, destination).split(path.sep).join("/");
+    const source = entry.source ?? entry.path;
+    const first = collisions.get(destination);
+    if (first) {
+      if (!first.sources.includes(source)) first.sources.push(source);
+      continue;
+    }
+    collisions.set(destination, { path: normalizedPath, sources: [source] });
+
+    const existingAncestor = await nearestExistingAncestor(destination);
+    if (!existingAncestor) {
+      errors.push({
+        path: normalizedPath,
+        reason: "destination has no existing ancestor to canonicalize",
+        sources: [source],
+      });
+      continue;
+    }
+    let canonicalAncestor;
+    try {
+      canonicalAncestor = await realpath(existingAncestor);
+    } catch (error) {
+      errors.push({
+        path: normalizedPath,
+        reason: `destination ancestor cannot be resolved: ${error.message}`,
+        sources: [source],
+      });
+      continue;
+    }
+    if (!isContained(canonicalRoot, canonicalAncestor)) {
+      errors.push({
+        path: normalizedPath,
+        reason: `destination escapes the canonical target root through ${path.relative(lexicalRoot, existingAncestor) || "."}`,
+        sources: [source],
+      });
+    }
+  }
+
+  for (const collision of collisions.values()) {
+    if (collision.sources.length > 1) {
+      errors.push({
+        path: collision.path,
+        reason: `normalized destination is produced by multiple sources: ${collision.sources.join(", ")}`,
+        sources: collision.sources,
+      });
+    }
+  }
+  return { canonicalRoot, errors };
 }
 
 export async function walk(directory, predicate, output = []) {
@@ -103,254 +189,222 @@ export function matchesGlob(filePath, glob) {
   return globToRegExp(glob).test(filePath.split(path.sep).join("/"));
 }
 
-export function validateProfile(profile) {
-  const errors = [];
-  const requireString = (value, key) => {
-    if (typeof value !== "string" || value.length === 0) {
-      errors.push(`${key} must be a non-empty string`);
+function resolveSchemaRef(schema, rootSchema) {
+  if (!schema.$ref) return schema;
+  const prefix = "#/$defs/";
+  if (!schema.$ref.startsWith(prefix)) return {};
+  return rootSchema.$defs?.[schema.$ref.slice(prefix.length)] ?? {};
+}
+
+function matchesType(value, type) {
+  if (type === "null") return value === null;
+  if (type === "array") return Array.isArray(value);
+  if (type === "object")
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+  if (type === "integer") return Number.isInteger(value);
+  if (type === "number") return typeof value === "number" && Number.isFinite(value);
+  return typeof value === type;
+}
+
+function instancePath(parent, key) {
+  return typeof key === "number" ? `${parent}[${key}]` : `${parent}.${key}`;
+}
+
+function schemaErrors(value, schema, location, rootSchema, options, errors) {
+  const resolved = resolveSchemaRef(schema, rootSchema);
+  if (resolved.type) {
+    const types = Array.isArray(resolved.type) ? resolved.type : [resolved.type];
+    if (!types.some((type) => matchesType(value, type))) {
+      errors.push(`${location} must be ${types.join(" or ")}`);
+      return;
     }
-  };
-
-  if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
-    return ["profile must be a JSON object"];
   }
 
-  for (const key of Object.keys(profile)) {
-    if (!PROFILE_ROOT_KEYS.has(key)) {
-      errors.push(`unknown profile field: ${key}`);
+  if (
+    resolved.const !== undefined &&
+    !(options.ignoreVersion && ["$.profileSchemaVersion", "$.version"].includes(location))
+  ) {
+    if (JSON.stringify(value) !== JSON.stringify(resolved.const)) {
+      errors.push(`${location} must equal ${JSON.stringify(resolved.const)}`);
+      return;
     }
   }
-
-  requireString(profile.methodologyVersion, "methodologyVersion");
   if (
-    typeof profile.methodologyVersion === "string" &&
-    !/^\d+\.\d+\.\d+$/.test(profile.methodologyVersion)
+    resolved.enum &&
+    !resolved.enum.some((candidate) => JSON.stringify(candidate) === JSON.stringify(value))
   ) {
-    errors.push("methodologyVersion must use major.minor.patch");
+    errors.push(
+      `${location} must be one of ${resolved.enum.map((candidate) => JSON.stringify(candidate)).join(", ")}`,
+    );
   }
-
-  if (!Number.isInteger(profile.profileSchemaVersion) || profile.profileSchemaVersion < 1) {
-    errors.push("profileSchemaVersion must be a positive integer");
+  if (typeof value === "string") {
+    if (resolved.minLength !== undefined && value.length < resolved.minLength) {
+      errors.push(`${location} must be a non-empty string`);
+    }
+    if (resolved.pattern && !new RegExp(resolved.pattern).test(value)) {
+      errors.push(`${location} must match ${resolved.pattern}`);
+    }
   }
-
-  requireString(profile?.adapter?.name, "adapter.name");
-  requireString(profile?.adapter?.version, "adapter.version");
-  if (
-    typeof profile?.adapter?.version === "string" &&
-    !/^\d+\.\d+\.\d+$/.test(profile.adapter.version)
-  ) {
-    errors.push("adapter.version must use major.minor.patch");
+  if (typeof value === "number" && resolved.minimum !== undefined && value < resolved.minimum) {
+    errors.push(`${location} must be at least ${resolved.minimum}`);
   }
-  requireString(profile.appRoot, "appRoot");
-  requireString(profile.stylesRoot, "stylesRoot");
-  requireString(profile.globalStylesheet, "globalStylesheet");
-  requireString(profile?.alias?.bare, "alias.bare");
-  requireString(profile?.alias?.subpath, "alias.subpath");
-  requireString(profile?.helpers?.classNames, "helpers.classNames");
-  requireString(profile?.helpers?.cssVariables, "helpers.cssVariables");
-  requireString(profile?.sharedApi?.entryPoint, "sharedApi.entryPoint");
-
-  if (!Array.isArray(profile?.sharedApi?.modules) || profile.sharedApi.modules.length === 0) {
-    errors.push("sharedApi.modules must contain at least one module");
-  }
-
-  const order = profile?.layers?.order;
-  if (!Array.isArray(order) || order.length === 0) {
-    errors.push("layers.order must contain at least one layer");
-  } else if (new Set(order).size !== order.length) {
-    errors.push("layers.order must not contain duplicates");
-  }
-
-  for (const [index, module] of (profile?.sharedApi?.modules ?? []).entries()) {
-    requireString(module?.name, `sharedApi.modules[${index}].name`);
-    requireString(module?.path, `sharedApi.modules[${index}].path`);
-    requireString(module?.layer, `sharedApi.modules[${index}].layer`);
-    if (
-      module?.publicClasses !== undefined &&
-      (!Array.isArray(module.publicClasses) ||
-        module.publicClasses.some(
-          (className) => typeof className !== "string" || className.length === 0,
-        ) ||
-        new Set(module.publicClasses).size !== module.publicClasses.length)
-    ) {
-      errors.push(
-        `sharedApi.modules[${index}].publicClasses must contain unique non-empty strings`,
+  if (Array.isArray(value)) {
+    if (resolved.minItems !== undefined && value.length < resolved.minItems) {
+      errors.push(`${location} must contain at least ${resolved.minItems} item(s)`);
+    }
+    if (resolved.uniqueItems) {
+      const serialized = value.map((item) => JSON.stringify(item));
+      if (new Set(serialized).size !== serialized.length)
+        errors.push(`${location} must not contain duplicates`);
+    }
+    if (resolved.items) {
+      value.forEach((item, index) =>
+        schemaErrors(
+          item,
+          resolved.items,
+          instancePath(location, index),
+          rootSchema,
+          options,
+          errors,
+        ),
       );
     }
-
-    if (Array.isArray(order) && !order.includes(module?.layer)) {
-      errors.push(`sharedApi.modules[${index}].layer is absent from layers.order`);
-    }
   }
-
-  const moduleNames = (profile?.sharedApi?.modules ?? []).map(({ name }) => name);
-  const modulePaths = (profile?.sharedApi?.modules ?? []).map(({ path: modulePath }) => modulePath);
-  if (new Set(moduleNames).size !== moduleNames.length) {
-    errors.push("sharedApi.modules names must be unique");
-  }
-  if (new Set(modulePaths).size !== modulePaths.length) {
-    errors.push("sharedApi.modules paths must be unique");
-  }
-
-  for (const [index, owner] of (profile?.layers?.ownership ?? []).entries()) {
-    requireString(owner?.glob, `layers.ownership[${index}].glob`);
-    requireString(owner?.layer, `layers.ownership[${index}].layer`);
-
-    if (Array.isArray(order) && !order.includes(owner?.layer)) {
-      errors.push(`layers.ownership[${index}].layer is absent from layers.order`);
-    }
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const properties = resolved.properties ?? {};
     if (
-      typeof owner?.glob === "string" &&
-      (path.isAbsolute(owner.glob) || owner.glob.split(/[\\/]/).includes(".."))
+      resolved.minProperties !== undefined &&
+      Object.keys(value).length < resolved.minProperties
     ) {
+      errors.push(`${location} must contain at least ${resolved.minProperties} properties`);
+    }
+    for (const required of resolved.required ?? []) {
+      if (!(required in value)) errors.push(`${instancePath(location, required)} is required`);
+    }
+    for (const [key, item] of Object.entries(value)) {
+      if (!(key in properties)) {
+        if (resolved.additionalProperties === false) {
+          if (location === "$" && (key === "spacing" || key === "sizeScale")) {
+            errors.push(
+              `$.${key} must not define spacing or sizeScale policy in a generic profile`,
+            );
+          } else if (location === "$.commands") {
+            errors.push(
+              `${instancePath(location, key)} is not a CSS harness command (additional property is not allowed)`,
+            );
+          } else {
+            errors.push(`${instancePath(location, key)} is not allowed by the profile schema`);
+          }
+        } else if (resolved.additionalProperties && resolved.additionalProperties !== true) {
+          schemaErrors(
+            item,
+            resolved.additionalProperties,
+            instancePath(location, key),
+            rootSchema,
+            options,
+            errors,
+          );
+        }
+        continue;
+      }
+      schemaErrors(item, properties[key], instancePath(location, key), rootSchema, options, errors);
+    }
+  }
+  for (const condition of resolved.allOf ?? []) {
+    schemaErrors(value, condition, location, rootSchema, options, errors);
+  }
+  if (resolved.if) {
+    const conditionErrors = [];
+    schemaErrors(value, resolved.if, location, rootSchema, options, conditionErrors);
+    const branch = conditionErrors.length === 0 ? resolved.then : resolved.else;
+    if (branch) schemaErrors(value, branch, location, rootSchema, options, errors);
+  }
+}
+
+function semanticProfileErrors(profile) {
+  if (
+    !profile.layers ||
+    !profile.layers.order ||
+    !profile.sharedApi ||
+    !Array.isArray(profile.sharedApi.modules) ||
+    !profile.colorTokens
+  ) {
+    return [];
+  }
+  if (profile.profileSchemaVersion !== DEFAULT_PROFILE_SCHEMA.properties.profileSchemaVersion.const)
+    return [];
+  const errors = [];
+  const order = profile.layers.order;
+  const modules = profile.sharedApi.modules;
+  const ownership = profile.layers.ownership;
+  const moduleNames = modules.map(({ name }) => name);
+  const modulePaths = modules.map(({ path: modulePath }) => modulePath);
+  if (new Set(moduleNames).size !== moduleNames.length)
+    errors.push("sharedApi.modules names must be unique");
+  if (new Set(modulePaths).size !== modulePaths.length)
+    errors.push("sharedApi.modules paths must be unique");
+  for (const [index, module] of modules.entries()) {
+    if (!order.includes(module.layer))
+      errors.push(`sharedApi.modules[${index}].layer is absent from layers.order`);
+  }
+  for (const [index, owner] of ownership.entries()) {
+    if (!order.includes(owner.layer))
+      errors.push(`layers.ownership[${index}].layer is absent from layers.order`);
+    if (path.isAbsolute(owner.glob) || owner.glob.split(/[\\/]/).includes("..")) {
       errors.push(`layers.ownership[${index}].glob must stay inside the project root`);
     }
   }
-
-  if (!Array.isArray(profile?.layers?.ownership)) {
-    errors.push("layers.ownership must be an array");
-  }
-
-  const localStrategies = new Set(["unlayered", "profiled", "custom"]);
-  if (!localStrategies.has(profile?.layers?.localModules?.strategy)) {
-    errors.push("layers.localModules.strategy is invalid");
-  }
   if (
-    profile?.layers?.localModules?.strategy === "profiled" &&
-    !profile.layers.localModules.layer
-  ) {
-    errors.push("profiled local modules require a layer");
-  }
-  if (
-    profile?.layers?.localModules?.strategy === "profiled" &&
-    Array.isArray(order) &&
+    profile.layers.localModules.strategy === "profiled" &&
     !order.includes(profile.layers.localModules.layer)
   ) {
     errors.push("layers.localModules.layer is absent from layers.order");
   }
-  if (
-    profile?.layers?.localModules?.strategy === "custom" &&
-    !profile.layers.localModules.document
-  ) {
-    errors.push("custom local modules require a document");
-  }
-
-  const admissionStrategies = new Set(["project-review", "second-semantic-consumer", "explicit"]);
-  if (!admissionStrategies.has(profile?.sharedApi?.admissionRule?.strategy)) {
-    errors.push("sharedApi.admissionRule.strategy is invalid");
-  }
-
-  if (
-    profile?.sharedApi?.admissionRule?.strategy === "explicit" &&
-    !profile.sharedApi.admissionRule.document
-  ) {
-    errors.push("explicit shared admission requires a document");
-  }
-
-  const compositionModes = new Set(["markup", "composes", "mixed-with-rule"]);
-  if (!compositionModes.has(profile?.composition?.mode)) {
-    errors.push("composition.mode is invalid");
-  }
-  if (profile?.composition?.mode === "mixed-with-rule" && !profile.composition.rule) {
-    errors.push("mixed composition requires a rule");
-  }
-
-  if (typeof profile?.colorTokens?.enabled !== "boolean") {
-    errors.push("colorTokens.enabled must be boolean");
-  }
-
-  if (profile?.colorTokens?.enabled) {
-    if (
-      !Array.isArray(profile.colorTokens.paletteFiles) ||
-      profile.colorTokens.paletteFiles.length === 0
-    ) {
-      errors.push("enabled colorTokens requires at least one palette file");
-    }
-    if (
-      !Array.isArray(profile.colorTokens.semanticFiles) ||
-      profile.colorTokens.semanticFiles.length === 0
-    ) {
-      errors.push("enabled colorTokens requires at least one semantic file");
-    }
-    requireString(profile.colorTokens.themeOwner, "colorTokens.themeOwner");
-    requireString(profile.colorTokens.themeAttribute, "colorTokens.themeAttribute");
-    if (!Array.isArray(profile.colorTokens.modes) || profile.colorTokens.modes.length === 0) {
-      errors.push("enabled colorTokens requires at least one mode");
-    }
-  }
-
-  if (
-    !profile.commands ||
-    typeof profile.commands !== "object" ||
-    Array.isArray(profile.commands)
-  ) {
-    errors.push("commands must be an object");
-  } else {
-    const cssCommandKeys = new Set(["css:generate", "css:types", "css:check", "css:verify"]);
-    for (const key of Object.keys(profile.commands)) {
-      if (!cssCommandKeys.has(key)) {
-        errors.push(`commands.${key} is not a CSS harness command`);
-      }
-    }
-    requireString(profile.commands["css:generate"], 'commands["css:generate"]');
-    requireString(profile.commands["css:types"], 'commands["css:types"]');
-  }
-
-  if (profile.enforcement !== undefined) {
-    if (
-      !profile.enforcement ||
-      typeof profile.enforcement !== "object" ||
-      Array.isArray(profile.enforcement)
-    ) {
-      errors.push("enforcement must be an object");
-    } else {
-      if (!new Set(["warning", "error"]).has(profile.enforcement.severity)) {
-        errors.push("enforcement.severity must be warning or error");
-      }
+  if (profile.colorTokens.enabled) {
+    const supportedMappings = new Set(["light", "dark", "light dark"]);
+    for (const mode of profile.colorTokens.modes) {
       if (
-        profile.enforcement.privateBooleanAttributes !== undefined &&
-        (!Array.isArray(profile.enforcement.privateBooleanAttributes) ||
-          profile.enforcement.privateBooleanAttributes.some(
-            (attribute) => typeof attribute !== "string" || !attribute.startsWith("data-"),
-          ))
+        !["system", "light", "dark"].includes(mode) &&
+        !supportedMappings.has(profile.colorTokens.modeMapping?.[mode])
       ) {
-        errors.push("enforcement.privateBooleanAttributes must contain data-* names");
-      }
-      for (const [index, module] of (profile.sharedApi?.modules ?? []).entries()) {
-        if (!Array.isArray(module.publicClasses)) {
-          errors.push(`enforcement requires sharedApi.modules[${index}].publicClasses`);
-        }
+        errors.push(`colorTokens.modes.${mode} requires colorTokens.modeMapping.${mode}`);
       }
     }
   }
-
-  if (profile.exceptions !== undefined && !Array.isArray(profile.exceptions)) {
-    errors.push("exceptions must be an array");
-  }
-  for (const [index, exception] of (Array.isArray(profile.exceptions)
-    ? profile.exceptions
-    : []
-  ).entries()) {
-    requireString(exception?.kind, `exceptions[${index}].kind`);
-    requireString(exception?.scope, `exceptions[${index}].scope`);
-    requireString(exception?.reason, `exceptions[${index}].reason`);
-    if (exception?.kind === "rule") {
-      requireString(exception.rule, `exceptions[${index}].rule`);
-      if (exception.match !== undefined)
-        requireString(exception.match, `exceptions[${index}].match`);
-    }
-  }
-
-  if ("spacing" in profile || "sizeScale" in profile) {
-    errors.push("generic profiles must not define spacing or sizeScale fields");
-  }
-
   return errors;
+}
+
+export function validateProfile(
+  profile,
+  { schema = DEFAULT_PROFILE_SCHEMA, ignoreVersion = false } = {},
+) {
+  if (profile === null || typeof profile !== "object" || Array.isArray(profile)) {
+    return ["$ must be a JSON object"];
+  }
+  const errors = [];
+  schemaErrors(profile, schema, "$", schema, { ignoreVersion }, errors);
+  if (errors.length === 0) errors.push(...semanticProfileErrors(profile));
+  return errors;
+}
+
+export async function readProfileSchema(root, profilePath) {
+  const profileFile = resolveInside(root, profilePath);
+  const besideProfile = path.join(path.dirname(profileFile), "css-modules.schema.json");
+  try {
+    return JSON.parse(await readFile(besideProfile, "utf8"));
+  } catch {
+    return DEFAULT_PROFILE_SCHEMA;
+  }
 }
 
 export async function readProfile(root, profilePath) {
   const profile = await readJson(resolveInside(root, profilePath));
-  const errors = validateProfile(profile);
+  if (profile?.format === "css-modules-compact") {
+    const { readResolvedContract } = await import("./contract.mjs");
+    return (await readResolvedContract(root, profilePath)).profile;
+  }
+  const schema = await readProfileSchema(root, profilePath);
+  const errors = validateProfile(profile, { schema });
   if (errors.length > 0) throw new Error(`Invalid CSS Modules profile: ${errors.join("; ")}`);
   return profile;
 }
@@ -372,7 +426,7 @@ export function matchesException(finding, exception) {
   );
 }
 
-export function finalizeFindings(rawFindings, exceptions = []) {
+export function finalizeFindings(rawFindings, exceptions = [], uncertainties = []) {
   const sorted = [...rawFindings].sort(
     (left, right) =>
       left.file.localeCompare(right.file) ||
@@ -391,8 +445,10 @@ export function finalizeFindings(rawFindings, exceptions = []) {
     ? "failed"
     : findings.length > 0
       ? "warnings"
-      : "passed";
-  return { findings, suppressed, status };
+      : uncertainties.length > 0
+        ? "uncertain"
+        : "passed";
+  return { findings, suppressed, status, uncertainties };
 }
 
 export function exitCodeForFindings(result) {
@@ -409,6 +465,10 @@ export function formatFindingsReport(result, title) {
   if (result.findings.length === 0) lines.push("No violations.");
   if (result.suppressed.length > 0)
     lines.push("", `Suppressed by documented exceptions: ${result.suppressed.length}`);
+  if (result.uncertainties?.length > 0) {
+    lines.push("", `Analysis uncertainty: ${result.uncertainties.length}`);
+    for (const item of result.uncertainties) lines.push(`UNVERIFIED ${item.file} ${item.message}`);
+  }
   lines.push("", `Result: ${result.status}`);
   return lines.join("\n");
 }

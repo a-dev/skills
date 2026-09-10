@@ -31,6 +31,27 @@ Every authored element that owns styling gets a class. Bare descendant element s
 
 Injected HTML is the exception: Markdown, CMS, rich-text, or WYSIWYG output may require scoped element selectors because application code cannot attach classes.
 
+Native CSS nesting has the same relationship contract as its flat equivalent:
+
+```css
+.root {
+  & h2,
+  h3 {
+    /* both still target an unowned descendant type */
+  }
+
+  & .title {
+    /* the descendant owns a local role class */
+  }
+}
+```
+
+Nested media/support/container rules carry the nearest authored class context.
+A `:global(.markdown)` wrapper is a narrow injected-content boundary, so its
+nested element selectors are exempt just like the flat scoped form. Selector
+syntax the checker cannot parse is reported for review rather than treated as
+clean.
+
 ## Inline geometry owned by libraries
 
 Application-owned values travel through private custom properties:

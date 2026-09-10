@@ -8,6 +8,7 @@ Load this reference when audit reports a methodology, profile-schema, or adapter
 - `methodologyVersion` identifies the portable styling contract.
 - `profileSchemaVersion` identifies the JSON profile shape.
 - `adapter.name` and `adapter.version` identify the tested stack integration.
+- `format: "css-modules-compact"` and `version: 1` identify the compact authoring shape; the legacy profile shape has no compact format discriminator.
 - The installed skill revision is separate; updating a skill does not authorize changing a project profile.
 
 The executable values and adapter minimums live in `../versions.json`. Audit consumes the same manifest.
@@ -29,13 +30,22 @@ The expected diff is limited to the profile, bundled harness files, selected CSS
 
 Audit only reports version drift. It does not rewrite the profile, configuration, or source.
 
+Legacy-to-compact migration is a separate explicit operation:
+
+```sh
+node scripts/setup.mjs migrate --to compact --authorize-migrate --format human
+```
+
+The planner builds a compact candidate, resolves both inputs through `contract.mjs`, and compares the resulting profiles before planning a replacement. It preserves custom topology, helper names, barrel paths, shared module exports and frozen classes, all palette/semantic files and `modeMapping`, commands, documents, composition rules, runtime guidance, and exceptions. A field that cannot be represented losslessly is named in the blocker and produces no writes. A second run reports `already-compact` and plans no replacement. Audit, align, daily checks, and show-config never perform this migration.
+
 Before `migrate` mode writes:
 
 1. compare the installed schema and adapter with the project versions;
 2. list behavior changes, profile changes, and expected file diffs;
-3. preserve project-selected aliases, boundaries, layers, admission rules, and exceptions where compatible;
-4. ask for any decision the new contract cannot derive;
-5. receive an explicit migration request.
+3. for legacy-to-compact, compare the resolved contracts and show field-specific differences;
+4. preserve project-selected aliases, boundaries, layers, admission rules, colors, commands, and exceptions where compatible;
+5. ask for any decision the new contract cannot derive;
+6. receive an explicit migration request.
 
 Run `scripts/verify-installation.mjs` before migration when discovery is ambiguous. Update or remove stale project/global copies before relying on the new contract.
 

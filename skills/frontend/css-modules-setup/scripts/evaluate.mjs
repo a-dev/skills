@@ -20,7 +20,8 @@ export function evaluateResponses(cases, responses) {
       if (response.activated !== evaluation.expectedActivation) {
         failures.push(`activation expected ${evaluation.expectedActivation}`);
       }
-      const normalized = response.response.toLowerCase();
+      const normalized = typeof response.response === "string" ? response.response.toLowerCase() : "";
+      if (typeof response.response !== "string") failures.push("response must be text");
       for (const signal of evaluation.requiredSignals ?? []) {
         if (!normalized.includes(signal.toLowerCase())) failures.push(`missing signal: ${signal}`);
       }
@@ -45,6 +46,8 @@ export function evaluateResponses(cases, responses) {
   ).sort((left, right) => left.category.localeCompare(right.category));
 
   return {
+    lane: "scorer",
+    evidence: "canned-response scorer only; no model activation or artifact evidence",
     status: results.every(({ passed }) => passed) ? "passed" : "failed",
     categories,
     results,

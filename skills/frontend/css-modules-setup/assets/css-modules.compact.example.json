@@ -1,0 +1,13 @@
+{
+  "$schema": "./css-modules.compact.schema.json",
+  "format": "css-modules-compact",
+  "version": 1,
+  "preset": "vite-react@1",
+  "styles": {
+    "root": "src/shared/styles",
+    "alias": "#styles"
+  },
+  "composition": "markup",
+  "colors": false,
+  "checks": "warn"
+}

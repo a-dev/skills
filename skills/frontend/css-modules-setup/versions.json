@@ -2,6 +2,13 @@
   "skillPackageVersion": "0.1.1",
   "methodologyVersion": "1.0.0",
   "profileSchemaVersion": 1,
+  "compactSchemaVersion": 1,
+  "compactPreset": "vite-react@1",
+  "evaluation": {
+    "scorerVersion": 2,
+    "behavioralCaseVersion": 1,
+    "runRecordVersion": 1
+  },
   "enforcement": {
     "oxlint": "1.74.0"
   },

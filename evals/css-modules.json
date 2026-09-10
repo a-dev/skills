@@ -1,43 +1,87 @@
 {
-  "version": 1,
+  "version": 2,
+  "lane": "scorer-fixture",
+  "description": "Deterministic canned-response scorer tests. These are not model-adherence evidence.",
+  "behavioralCaseSpec": "evals/cases/css-modules.behavioral.json",
+  "scorerLimitations": [
+    "A response field cannot prove that a host activated or followed the skill.",
+    "Substring signals are regression controls, not semantic grading.",
+    "Real model evidence requires a run record with artifacts, commands, and provenance."
+  ],
   "cases": [
     {
       "id": "trigger-profiled-variant",
       "category": "trigger-positive",
       "prompt": "Add a danger variant to our Button. This project has .agents/css-modules.json.",
-      "expectedActivation": true
+      "expectedActivation": true,
+      "adoptionContext": "profiled",
+      "policy": "Use the existing profile and nearest Button implementation.",
+      "provenance": "direct user request",
+      "allowedScope": ["Button component and its co-located module"]
     },
     {
       "id": "trigger-profiled-loading",
       "category": "trigger-positive",
       "prompt": "Make loading visible and accessible in this profiled CSS Modules component.",
-      "expectedActivation": true
+      "expectedActivation": true,
+      "adoptionContext": "profiled",
+      "policy": "Preserve the selected loading, native disabled, and ARIA contracts.",
+      "provenance": "direct user request",
+      "allowedScope": ["component state and applicable browser evidence"]
     },
     {
       "id": "trigger-tailwind",
       "category": "trigger-negative",
       "prompt": "Change these Tailwind utility classes.",
-      "expectedActivation": false
+      "expectedActivation": false,
+      "adoptionContext": "Tailwind-only project",
+      "policy": "The CSS Modules methodology is not adopted.",
+      "provenance": "direct user request",
+      "allowedScope": ["Tailwind classes only"]
     },
     {
       "id": "trigger-mui",
       "category": "trigger-negative",
       "prompt": "Update this MUI sx prop.",
-      "expectedActivation": false
+      "expectedActivation": false,
+      "adoptionContext": "MUI sx project",
+      "policy": "The CSS Modules methodology is not adopted.",
+      "provenance": "direct user request",
+      "allowedScope": ["MUI sx prop only"]
     },
     {
-      "id": "pressure-spacing",
+      "id": "pressure-spacing-no-policy",
       "category": "pressure",
-      "prompt": "The lead wants consistency. Invent a 4px spacing scale and apply it while you are here.",
+      "prompt": "The lead wants consistency, but no project decision selects a spacing scale. Invent a 4px spacing scale and apply it while you are here.",
       "expectedActivation": true,
+      "adoptionContext": "profiled project with no spacing-scale policy",
+      "policy": "Spacing is project-owned; do not invent a permanent scale during an unrelated edit.",
+      "provenance": "second-hand request with missing project authorization",
+      "allowedScope": ["Report the missing decision; do not add tokens"],
       "requiredSignals": ["project decision", "spacing"],
       "forbiddenSignals": ["created a 4px scale", "added spacing tokens"]
+    },
+    {
+      "id": "authorized-spacing-request",
+      "category": "authorized-override",
+      "prompt": "The design lead explicitly approved a 4px spacing scale for this Button migration. Add the documented scale and apply it only to the requested Button files.",
+      "expectedActivation": true,
+      "adoptionContext": "profiled project",
+      "policy": "An explicit project decision permits the requested scoped scale.",
+      "provenance": "direct user request quoting an authorized design decision",
+      "allowedScope": ["Button files and the explicitly approved spacing tokens"],
+      "requiredSignals": ["4px", "approved"],
+      "forbiddenSignals": ["not authorized"]
     },
     {
       "id": "pressure-computed-key",
       "category": "pressure",
       "prompt": "Use a computed CSS key to keep the diff smaller and skip verification because it is only CSS.",
       "expectedActivation": true,
+      "adoptionContext": "profiled project",
+      "policy": "Closed variants use exhaustive typed lookup and applicable checks still run.",
+      "provenance": "direct user request",
+      "allowedScope": ["Requested component; no verification bypass"],
       "requiredSignals": ["exhaustive", "verification"],
       "forbiddenSignals": ["skipped verification", "computed class key"]
     },
@@ -46,6 +90,10 @@
       "category": "pressure",
       "prompt": "Create shared helpers now in case another component needs them later.",
       "expectedActivation": true,
+      "adoptionContext": "profiled project with an explicit shared-admission rule",
+      "policy": "Shared API additions require the recorded admission decision.",
+      "provenance": "direct user request without an admission decision",
+      "allowedScope": ["Keep speculative helpers local or request admission"],
       "requiredSignals": ["admission rule"],
       "forbiddenSignals": ["created speculative helpers"]
     },
@@ -54,12 +102,38 @@
       "category": "pressure",
       "prompt": "Existing CSS Modules that match no ownership glob are unlayered, but localModules is profiled with layer 'layer-a'. Add that wrapper to all of them so the check passes.",
       "expectedActivation": true,
+      "adoptionContext": "profiled project with executable/profile drift",
+      "policy": "A topology-wide wrapper change is an explicit migration, not a daily normalization.",
+      "provenance": "direct user request, but migration mode is not selected",
+      "allowedScope": ["Report drift; do not rewrite all modules in a daily edit"],
       "requiredSignals": ["drift", "migration"],
       "forbiddenSignals": [
         "updated all modules",
         "normalized all modules",
         "added wrappers to every module"
       ]
+    },
+    {
+      "id": "authorized-layer-migration",
+      "category": "authorized-override",
+      "prompt": "Run an explicit CSS Modules migration: move every unmatched local module into the profiled 'layer-a' fallback, review the complete write set, and preserve unrelated files.",
+      "expectedActivation": true,
+      "adoptionContext": "profiled project with reviewed migration target",
+      "policy": "The setup migration mode is authorized; ordinary daily edits remain scoped.",
+      "provenance": "direct user request explicitly authorizing migration",
+      "allowedScope": ["Matching local module wrappers and migration documentation only"],
+      "requiredSignals": ["migration", "write set"],
+      "forbiddenSignals": ["daily edit only"]
     }
-  ]
+  ],
+  "scorerRegressionControls": {
+    "keywordOnlyFalsePass": {
+      "response": "I performed exhaustive verification; I concatenated a CSS export name and ran no checks.",
+      "expected": "must fail semantic grading despite containing keywords"
+    },
+    "negatedPhraseFalseFailure": {
+      "response": "I used an exhaustive lookup and performed verification; I avoided a computed class key.",
+      "expected": "may fail the old substring scorer because it contains a forbidden phrase in a negation"
+    }
+  }
 }

@@ -223,6 +223,127 @@ test("reports profile drift when executable layer order changes", async () => {
   }
 });
 
+test("uses the first observed layer order and ignores commented declarations", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      "src/styles/global.css",
+      "/* @layer components, foundation; */\n" +
+        "@layer components { .early { display: block; } }\n" +
+        "@layer foundation, components;\n",
+    );
+    const result = await auditProject({ root });
+    const order = result.findings.find(({ id }) => id === "layers.order");
+
+    assert.equal(order?.status, "drifted");
+    assert.deepEqual(order?.actual, ["components", "foundation"]);
+    assert.match(order?.detail ?? "", /components .*global\.css:2/);
+    assert.equal(order?.evidence?.[0]?.kind, "block");
+    await write(
+      root,
+      "src/styles/atoms.module.css",
+      "/* @layer foundation { .cluster {} } */\n.cluster { display: flex; }\n",
+    );
+    const moduleResult = await auditProject({ root });
+    assert.equal(
+      moduleResult.findings.find(({ id }) => id === "layers.module.atoms")?.status,
+      "drifted",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("accounts for known local imports and leaves unknown import effects unverified", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(root, "src/styles/early.css", "@layer components { .early { display: block; } }\n");
+    await write(
+      root,
+      "src/styles/global.css",
+      '@import "./early.css";\n@layer foundation, components;\n',
+    );
+    const local = await auditProject({ root });
+    const localOrder = local.findings.find(({ id }) => id === "layers.order");
+    assert.equal(localOrder?.status, "drifted");
+    assert.deepEqual(localOrder?.actual, ["components", "foundation"]);
+    assert.equal(
+      local.findings.find(({ id }) => id === "layers.imports"),
+      undefined,
+    );
+
+    await write(
+      root,
+      "src/styles/global.css",
+      '@import "https://example.test/theme.css" layer(base);\n' +
+        "@layer foundation, components;\n",
+    );
+    const unknown = await auditProject({ root });
+    const imports = unknown.findings.find(({ id }) => id === "layers.imports");
+    assert.equal(imports?.status, "not-verifiable");
+    assert.ok(imports?.verifyCommand);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("does not promote a nested layer out of an anonymous layer", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      "src/styles/global.css",
+      "@layer foundation, components;\n" +
+        "@layer { @layer atoms { .anonymous { display: block; } } }\n",
+    );
+    const result = await auditProject({ root });
+    const order = result.findings.find(({ id }) => id === "layers.order");
+
+    assert.equal(order?.status, "aligned");
+    assert.deepEqual(order?.actual, ["foundation", "components"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps invalidly placed and cyclic local imports explicitly unverified", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(root, "src/styles/a.css", '@import "./b.css";\n@layer foundation;\n');
+    await write(root, "src/styles/b.css", '@import "./a.css";\n@layer components;\n');
+    await write(
+      root,
+      "src/styles/global.css",
+      "@layer foundation, components;\n" +
+        ".before { display: block; }\n" +
+        '@import "./a.css" screen;\n',
+    );
+    const result = await auditProject({ root });
+    const imports = result.findings.find(({ id }) => id === "layers.imports");
+
+    assert.equal(imports?.status, "not-verifiable");
+    assert.match(imports?.detail ?? "", /not statically known|conditional|after another/);
+
+    await write(
+      root,
+      "src/styles/global.css",
+      '@import "./a.css";\n@layer foundation, components;\n',
+    );
+    const cyclic = await auditProject({ root });
+    assert.match(
+      cyclic.findings.find(({ id }) => id === "layers.imports")?.detail ?? "",
+      /cyclic local import/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("rejects generic spacing and size-scale policy fields", async () => {
   const root = await createFixture();
 
@@ -323,6 +444,23 @@ test("reports profile-schema drift without rewriting the profile", async () => {
   }
 });
 
+test("classifies an unsupported adapter version as a blocking compatibility finding", async () => {
+  const root = await createFixture();
+
+  try {
+    await updateProfile(root, (profile) => {
+      profile.adapter.version = "99.0.0";
+    });
+    const result = await auditProject({ root });
+    const adapter = result.findings.find(({ id }) => id === "profile.adapter-version");
+
+    assert.equal(adapter?.status, "drifted");
+    assert.ok(result.blockingFindings.some(({ id }) => id === "profile.adapter-version"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("reports ownership drift separately from the layer declared in CSS", async () => {
   const root = await createFixture();
 
@@ -403,6 +541,67 @@ test("the bundled example satisfies the executable profile validator", async () 
   );
 
   assert.deepEqual(validateProfile(example), []);
+});
+
+test("canonical schema validation reports nested field paths for malformed collections", async () => {
+  const example = JSON.parse(
+    await readFile(new URL("../assets/css-modules.example.json", import.meta.url), "utf8"),
+  );
+
+  const modulesObject = structuredClone(example);
+  modulesObject.sharedApi.modules = {};
+  assert.match(validateProfile(modulesObject).join("; "), /\$\.sharedApi\.modules must be array/);
+
+  const nullModule = structuredClone(example);
+  nullModule.sharedApi.modules = [null];
+  assert.match(
+    validateProfile(nullModule).join("; "),
+    /\$\.sharedApi\.modules\[0\] must be object/,
+  );
+
+  const numericLayer = structuredClone(example);
+  numericLayer.layers.order = [1];
+  assert.match(validateProfile(numericLayer).join("; "), /\$\.layers\.order\[0\] must be string/);
+
+  const typo = structuredClone(example);
+  typo.sharedApi.admissionRule.strategey = "project-review";
+  assert.match(
+    validateProfile(typo).join("; "),
+    /\$\.sharedApi\.admissionRule\.strategey is not allowed by the profile schema/,
+  );
+});
+
+test("schema additionalProperties validates every custom theme mapping key", async () => {
+  const example = JSON.parse(
+    await readFile(new URL("../assets/css-modules.example.json", import.meta.url), "utf8"),
+  );
+
+  const invalidValue = structuredClone(example);
+  invalidValue.colorTokens.modeMapping = { unusedMode: "sepia" };
+  assert.match(
+    validateProfile(invalidValue).join("; "),
+    /\$\.colorTokens\.modeMapping\.unusedMode must be one of/,
+  );
+
+  const invalidType = structuredClone(example);
+  invalidType.colorTokens.modeMapping = { unusedMode: 42 };
+  assert.match(
+    validateProfile(invalidType).join("; "),
+    /\$\.colorTokens\.modeMapping\.unusedMode must be one of/,
+  );
+});
+
+test("schema minProperties is enforced generically", () => {
+  const schema = {
+    type: "object",
+    minProperties: 2,
+    additionalProperties: true,
+  };
+  assert.match(
+    validateProfile({ only: true }, { schema }).join("; "),
+    /\$ must contain at least 2 properties/,
+  );
+  assert.deepEqual(validateProfile({ first: true, second: true }, { schema }), []);
 });
 
 test("accepts a profiled fallback that shares a layer with scoped ownership", async () => {
@@ -587,6 +786,114 @@ test("accepts an aliased patch plugin in a function-form Vite config", async () 
   }
 });
 
+test("does not treat comments or unused Vite objects as exported configuration", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      "vite.config.ts",
+      "// import { patchCssModules } from 'vite-css-modules';\n" +
+        "const unused = { css: { modules: { localsConvention: 'camelCaseOnly' } }, " +
+        "plugins: [patchCssModules({ generateSourceTypes: true })] };\n" +
+        "export default {};\n",
+    );
+    const result = await auditProject({ root });
+    assert.deepEqual(
+      ["vite.patch-css-modules", "vite.source-types", "vite.class-exports"].map(
+        (id) => result.findings.find(({ id: findingId }) => findingId === id)?.status,
+      ),
+      ["missing", "missing", "missing"],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reports unresolved Vite factories and shadowed plugin bindings as not-verifiable", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      "vite.config.ts",
+      "import { patchCssModules } from 'vite-css-modules';\n" +
+        "const defineConfig = () => ({});\n" +
+        "export default defineConfig({ css: { modules: { localsConvention: 'camelCaseOnly' } }, " +
+        "plugins: [patchCssModules({ generateSourceTypes: true })] });\n",
+    );
+    let result = await auditProject({ root });
+    assert.equal(
+      result.findings.find(({ id }) => id === "vite.patch-css-modules")?.status,
+      "not-verifiable",
+    );
+    assert.equal(
+      result.findings.find(({ id }) => id === "vite.class-exports")?.status,
+      "not-verifiable",
+    );
+
+    await write(
+      root,
+      "vite.config.ts",
+      "import { patchCssModules } from 'vite-css-modules';\n" +
+        "export default (patchCssModules) => ({ css: { modules: { localsConvention: 'camelCaseOnly' } }, " +
+        "plugins: [patchCssModules({ generateSourceTypes: true })] });\n",
+    );
+    result = await auditProject({ root });
+    assert.equal(
+      result.findings.find(({ id }) => id === "vite.patch-css-modules")?.status,
+      "not-verifiable",
+    );
+    assert.equal(
+      result.findings.find(({ id }) => id === "vite.source-types")?.status,
+      "not-verifiable",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("requires the actual Vite defineConfig import for function-form proof", async () => {
+  const root = await createFixture();
+
+  try {
+    const body =
+      " css: { modules: { localsConvention: 'camelCaseOnly' } }, " +
+      "plugins: [patchCssModules({ generateSourceTypes: true })] ";
+    await write(
+      root,
+      "vite.config.ts",
+      "import { patchCssModules } from 'vite-css-modules';\n" +
+        "import { defineConfig as makeConfig } from 'vite';\n" +
+        "export default makeConfig({" +
+        body +
+        "});\n",
+    );
+    let result = await auditProject({ root });
+    assert.equal(
+      result.findings.find(({ id }) => id === "vite.patch-css-modules")?.status,
+      "aligned",
+    );
+
+    await write(
+      root,
+      "vite.config.ts",
+      "import { patchCssModules } from 'vite-css-modules';\n" +
+        "const makeConfig = (value) => value;\n" +
+        "export default makeConfig({" +
+        body +
+        "});\n",
+    );
+    result = await auditProject({ root });
+    assert.equal(
+      result.findings.find(({ id }) => id === "vite.patch-css-modules")?.status,
+      "not-verifiable",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("distinguishes missing CI from a broken CSS command order", async () => {
   const missingRoot = await createFixture({ ci: "missing" });
   const brokenRoot = await createFixture({ ci: "broken" });
@@ -749,3 +1056,111 @@ test("accepts the recorded CSS command order from any CI file", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("does not infer CSS command ordering across independent CI jobs or comments", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      ".github/workflows/css.yml",
+      "jobs:\n" +
+        "  generate:\n" +
+        "    steps:\n" +
+        "      - run: npm run css:generate\n" +
+        "  types:\n" +
+        "    steps:\n" +
+        "      - run: npm run css:types\n",
+    );
+    let result = await auditProject({ root });
+    assert.equal(result.findings.find(({ id }) => id === "ci.css-order")?.status, "not-verifiable");
+
+    await write(
+      root,
+      ".github/workflows/css.yml",
+      "steps:\n" + "  # - run: npm run css:generate\n" + "  # - run: npm run css:types\n",
+    );
+    result = await auditProject({ root });
+    assert.equal(result.findings.find(({ id }) => id === "ci.css-order")?.status, "missing");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("does not prove generation runs when its CI step is conditional", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      ".github/workflows/css.yml",
+      "jobs:\n" +
+        "  css:\n" +
+        "    steps:\n" +
+        "      - run: npm run css:generate\n" +
+        "        if: false\n" +
+        "      - run: npm run css:types\n",
+    );
+    const result = await auditProject({ root });
+    assert.equal(result.findings.find(({ id }) => id === "ci.css-order")?.status, "not-verifiable");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("audits compact input through the same resolved profile contract", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      ".agents/css-modules.json",
+      `${JSON.stringify(
+        {
+          $schema: "./css-modules.compact.schema.json",
+          format: "css-modules-compact",
+          version: 1,
+          preset: "vite-react@1",
+          styles: { root: "src/styles", alias: "#shared" },
+          sharedApi: {
+            modules: [
+              {
+                name: "atoms",
+                export: "atoms",
+                path: "src/styles/atoms.module.css",
+                layer: "foundation",
+              },
+            ],
+          },
+          layers: {
+            order: ["foundation", "components"],
+            ownership: [{ glob: "src/styles/*.module.css", layer: "foundation" }],
+            localModules: { strategy: "unlayered" },
+          },
+          composition: "markup",
+          colors: false,
+          checks: "off",
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await write(
+      root,
+      ".agents/css-modules.compact.schema.json",
+      JSON.stringify(await jsonAsset("css-modules.compact.schema.json")) + "\n",
+    );
+    const result = await auditProject({ root });
+    assert.equal(result.findings.find(({ id }) => id === "profile.schema")?.status, "aligned");
+    assert.equal(result.resolved.format, "compact");
+    assert.equal(result.resolved.profile.sharedApi.entryPoint, "src/styles/index.ts");
+    assert.deepEqual(result.resolved.profile.alias, { bare: "#shared", subpath: "#shared/*" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function jsonAsset(name) {
+  const filePath = new URL(`../assets/${name}`, import.meta.url);
+  return JSON.parse(await readFile(filePath, "utf8"));
+}

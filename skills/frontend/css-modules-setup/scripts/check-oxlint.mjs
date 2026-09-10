@@ -13,10 +13,10 @@ import {
   exitCodeForFindings,
   finalizeFindings,
   formatFindingsReport,
-  readProfile,
   resolveInside,
   selectSeverity,
 } from "./lib.mjs";
+import { readResolvedContract, sharedApiInterpretation } from "./contract.mjs";
 
 const CATEGORY_NAMES = [
   "correctness",
@@ -129,7 +129,8 @@ export async function checkWithOxlint({
   severity,
 } = {}) {
   const resolvedRoot = path.resolve(root);
-  const profile = await readProfile(resolvedRoot, profilePath);
+  const contract = await readResolvedContract(resolvedRoot, profilePath);
+  const profile = contract.profile;
   const selectedSeverity = selectSeverity(profile, severity);
 
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "css-modules-oxlint-config-"));
@@ -147,9 +148,12 @@ export async function checkWithOxlint({
     ),
     settings: {
       cssModules: {
-        classNamesHelper: profile.helpers.classNames,
-        cssVariablesHelper: profile.helpers.cssVariables,
+        ...sharedApiInterpretation(profile),
         privateBooleanAttributes: profile.enforcement?.privateBooleanAttributes ?? ["data-loading"],
+        sharedApiSources: [profile.alias.bare, profile.sharedApi.entryPoint],
+        sharedCssModuleExports: profile.sharedApi.modules
+          .map(({ export: exportName }) => exportName)
+          .filter(Boolean),
       },
     },
   };

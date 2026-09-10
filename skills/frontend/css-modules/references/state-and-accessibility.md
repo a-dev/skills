@@ -29,6 +29,14 @@ Private boolean data state uses presence:
 .root[data-loading] {
   cursor: progress;
 }
+
+The source checker supports `value || undefined`, a ternary with one known
+present branch and one known omitted branch (including either branch order),
+and the constants `true`, `null`, and the global `undefined`. It rejects
+`value ?? undefined` when `value` can be `false`, any ternary branch that is
+the literal `false`, and a locally shadowed `undefined`. These syntax checks
+prevent known `data-loading="false"` serialization; they do not establish the
+product meaning of an arbitrary condition.
 ```
 
 Meaningful ARIA false values remain present:
@@ -102,3 +110,9 @@ Keep the control's accessible name stable unless product requirements say otherw
 - Accessible names remain correct in every state.
 - Reduced-motion and forced-colors behavior is checked when applicable.
 - Existing headless-library attributes are preserved.
+
+DOM evidence and assistive-technology evidence are different. An assertion such as
+`aria-busy="true"` or `aria-pressed="false"` proves the DOM state exposed to an
+accessibility tree; it does not prove that a screen reader announced the change.
+Only report a screen-reader announcement when a screen-reader test or host trace
+actually observed it.

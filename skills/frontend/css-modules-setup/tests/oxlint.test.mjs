@@ -70,6 +70,7 @@ async function createFixture({ invalid = false, overrides = {} } = {}) {
     "src/button.tsx",
     invalid
       ? `import styles from "./button.module.css";
+import { mergeClasses, styleVariables } from "#styles";
 
 export function Button({ busy, size }: { busy: boolean; size: string }) {
   return (
@@ -84,6 +85,7 @@ export function Button({ busy, size }: { busy: boolean; size: string }) {
 }
 `
       : `import styles from "./button.module.css";
+import { mergeClasses, styleVariables } from "#styles";
 
 const SIZE_CLASS = { small: styles.root };
 
@@ -216,6 +218,49 @@ test("a file Oxlint cannot parse fails even during warning-first adoption", asyn
     assert.equal(parseErrors[0].severity, "error");
     assert.equal(result.json.status, "failed");
     assert.equal(result.code, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Oxlint follows imported aliases, conditional helper forms, and presence evidence", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      "src/aliases.tsx",
+      `import styles from "./button.module.css";
+import { mergeClasses as cls, styleVariables as vars } from "#styles";
+
+export function Aliases({ busy, size }: { busy: boolean; size: string }) {
+  return <div
+    data-busy={busy ?? undefined}
+    data-busy={busy ? false : undefined}
+    className={cls(
+      busy && styles.loading,
+      busy ? styles.root : styles.loading,
+      { [styles.loading]: busy },
+      styles[size],
+    )}
+    style={vars({ "--_opacity": busy ? 1 : 0 })}
+  />;
+}
+
+export function Unrelated({ busy }: { busy: boolean }) {
+  function cls(value: unknown) { return value; }
+  return <div className={cls(busy && styles.loading)} />;
+}
+`,
+    );
+    const result = await run(root);
+    const ids = result.json.findings.map(({ ruleId }) => ruleId);
+
+    assert.equal(result.code, 1);
+    assert.equal(ids.filter((id) => id === "css-modules/no-computed-key").length, 1);
+    assert.equal(ids.filter((id) => id === "css-modules/no-boolean-state-class").length, 3);
+    assert.equal(ids.filter((id) => id === "css-modules/data-boolean-presence").length, 2);
+    assert.equal(ids.filter((id) => id === "css-modules/custom-property-style-only").length, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

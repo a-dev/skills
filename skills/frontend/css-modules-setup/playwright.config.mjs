@@ -14,5 +14,6 @@ export default defineConfig({
     cwd: import.meta.dirname,
     url: "http://127.0.0.1:4173",
     reuseExistingServer: false,
+    gracefulShutdown: { signal: "SIGTERM", timeout: 5000 },
   },
 });

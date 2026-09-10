@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "id": "removed-instruction-control",
+  "purpose": "Sensitivity control for the behavioral lane",
+  "baseline": {
+    "skillText": "revised",
+    "request": "Add the danger variant using the existing adopted CSS Modules contract.",
+    "expected": "A scoped variant implementation with generated-key/type evidence."
+  },
+  "control": {
+    "skillText": "revised with the exhaustive-variant and verification instructions removed",
+    "sameRequest": true,
+    "expected": "The control is scored with the same artifact checks; any adherence difference is evidence about those instructions, not a keyword result."
+  },
+  "heldConstant": ["model", "settings", "fixture revision", "request", "grader revision"],
+  "measure": [
+    "task completion",
+    "unwanted edits",
+    "false refusal",
+    "verification honesty",
+    "missing evidence"
+  ],
+  "noLiveRunInCi": true
+}

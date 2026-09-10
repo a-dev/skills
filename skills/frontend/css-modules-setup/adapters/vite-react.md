@@ -2,13 +2,19 @@
 
 This is the only stack adapter currently backed by declaration, build, contract, and real-browser fixtures. Its version and minimum tested dependency versions live in `../versions.json`.
 
+The compact authoring preset is `vite-react@1`; it resolves the tested Vite + React
+adapter version `1.0.0`, baseline `reset, base, atoms, ui` layers, and default
+`cx`/`cssVars` helpers. The maintained reference fixture and browser lane cover
+both the Vite development server and a production preview built from this same
+configuration. Other stacks need their own adapter and equivalent evidence.
+
 Load this adapter only for a Vite + React target. Do not describe another framework as supported until it has its own adapter and equivalent fixtures.
 
 ## Dependencies
 
 Install `vite-css-modules` as a development dependency. The reference `cx` helper is dependency-free; keep a project's existing class combiner when it already has one.
 
-When the profile enables mechanical enforcement, install the dependencies printed by the setup plan. The bundled checker uses ESLint AST rules for TSX/React syntax, Stylelint for CSS syntax, and PostCSS contract checks for cross-file facts.
+When the profile enables mechanical enforcement, install the dependencies printed by the setup plan. ESLint is the default aggregate engine and the plan does not include Oxlint. A compact profile may explicitly select `lintEngine: "oxlint"`; that adds only the optional Oxlint adapter while preserving Stylelint and PostCSS cross-file checks.
 
 Use the detected package manager and selected workspace package. Do not copy npm commands into pnpm, Yarn, or Bun projects.
 
@@ -52,7 +58,7 @@ vite-css-modules
 
 In a monorepo, run from the selected Vite app or pass `--config` explicitly.
 
-Add a dedicated declaration-generation command and record it as `css:generate`. Record the TypeScript command that validates generated declarations as `css:types`; declarations must exist before it runs.
+Add a dedicated declaration-generation command and record it as `css:generate`. Record the TypeScript command that validates generated declarations as `css:types`; declarations must exist before it runs. Compact setup derives these commands only from scripts actually present in `package.json` and its package-manager metadata, unless an explicit command override is reviewed.
 
 Do not overwrite an existing `prepare` script. Prefer a project-native aggregate check or compose lifecycle commands in the style already used by the repository.
 
@@ -66,6 +72,6 @@ Import the selected global stylesheet exactly once from the application entry. I
 
 ## Verification
 
-Run the profile's CSS-harness commands and use a disposable reference component or existing style fixture. Do not run general application checks by default, and do not restyle production UI during setup.
+Run the narrowest profile or existing application command that supplies the needed evidence, using a disposable reference component or existing style fixture where appropriate. Do not restyle production UI during setup.
 
-If only a general application build can prove an alias or external `composes`, report that behavior as `not-verifiable`. The developer may choose to run the broader command, but it does not belong in the generic CSS profile.
+If only a general application build can prove an alias or external `composes`, the agent may run that existing build as a narrowly relevant, agent-owned step and report its effects and unrelated failures separately. It does not belong in the generic CSS profile.

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { evaluateResponses, runEvaluation } from "../scripts/evaluate.mjs";
@@ -7,14 +8,31 @@ test("trigger and pressure evaluations pass by category", async () => {
   const result = await runEvaluation();
 
   assert.equal(result.status, "passed");
+  assert.equal(result.lane, "scorer");
+  assert.match(result.evidence, /no model activation|not model adherence evidence/);
   assert.deepEqual(
     result.categories.map(({ category, failed }) => [category, failed]),
     [
+      ["authorized-override", 0],
       ["pressure", 0],
       ["trigger-negative", 0],
       ["trigger-positive", 0],
     ],
   );
+});
+
+test("scorer fixture records its adoption and authorization context without treating it as evidence", async () => {
+  const cases = await readFile(
+    new URL("../../../../evals/css-modules.json", import.meta.url),
+    "utf8",
+  );
+  const parsed = JSON.parse(cases);
+  assert.equal(parsed.lane, "scorer-fixture");
+  assert.ok(parsed.cases.every((entry) => entry.adoptionContext));
+  assert.ok(parsed.cases.every((entry) => entry.policy));
+  assert.ok(parsed.cases.every((entry) => entry.provenance));
+  assert.ok(parsed.cases.every((entry) => entry.allowedScope));
+  assert.match(parsed.scorerLimitations.join(" "), /not model-adherence evidence|model evidence/i);
 });
 
 test("the scorer rejects activation drift, spacing invention, and layer-profile normalization", () => {

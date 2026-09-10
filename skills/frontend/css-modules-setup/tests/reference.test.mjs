@@ -35,6 +35,35 @@ test("reference component generates declarations, typechecks, builds, and reject
   assert.equal(result.typecheck, "passed");
   assert.equal(result.build, "passed");
   assert.equal(result.invalidClassKey, "rejected");
+  assert.equal(result.generatedProject.scenarios.length, 4);
+  for (const scenario of result.generatedProject.scenarios) {
+    assert.equal(scenario.typecheck, "passed");
+    assert.equal(scenario.build, "passed");
+    assert.deepEqual(scenario.repeat, { status: "aligned", changes: 0 });
+    assert.equal(scenario.audit.readOnly, true);
+  }
+  assert.match(result.generatedProject.scenarios[0].missingClass, /expected TypeScript diagnostic/);
+  assert.equal(result.generatedProject.scenarios[2].migration.status, "supported");
+  assert.deepEqual(result.generatedProject.scenarios[2].migration.differences, []);
+  assert.equal(result.generatedProject.scenarios[2].migration.profileFormat, "compact");
+  assert.equal(result.generatedProject.scenarios[3].sharedModules, 0);
+  assert.equal(result.generatedProject.scenarios[3].placeholderCss, false);
+  assert.deepEqual(result.generatedProject.scenarios[3].admission.alignment, {
+    status: "aligned",
+    changes: 0,
+  });
+  assert.deepEqual(result.generatedProject.scenarios[3].admission.inferredPublicClasses, [
+    "button",
+  ]);
+  assert.deepEqual(result.generatedProject.scenarios[3].admission.frozenPublicClasses, ["button"]);
+  assert.equal(
+    result.generatedProject.scenarios[3].admission.unlistedClass,
+    "rejected by css-modules/shared-public-class",
+  );
+  assert.equal(
+    result.generatedProject.scenarios[3].admission.removedClass,
+    "rejected by css-modules/shared-public-class",
+  );
   assert.ok(
     result.generatedDeclarations.some((filePath) =>
       filePath.endsWith("reference-button.module.css.d.ts"),

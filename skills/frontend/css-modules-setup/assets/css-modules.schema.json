@@ -304,6 +304,12 @@
           "items": {
             "type": "string"
           }
+        },
+        "modeMapping": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": ["light", "dark", "light dark"]
+          }
         }
       },
       "allOf": [

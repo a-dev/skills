@@ -2,6 +2,8 @@ import colorNames from "color-name";
 import selectorParser from "postcss-selector-parser";
 import valueParser from "postcss-value-parser";
 import stylelint from "stylelint";
+import { colorValuePositions, stringifyColorNode } from "../scripts/color-analysis.mjs";
+import { normalizeLayerName } from "../scripts/layer-analysis.mjs";
 
 const { report, ruleMessages } = stylelint.utils;
 const NAMED_COLORS = new Set(Object.keys(colorNames));
@@ -22,23 +24,65 @@ function plugin(ruleName, message, inspect) {
   return stylelint.createPlugin(ruleName, rule);
 }
 
-function parseSelectors(rule, visit) {
+function parseSelectors(rule, visit, onError) {
   try {
     selectorParser(visit).processSync(rule.selector);
   } catch {
-    // Stylelint reports malformed selectors separately.
+    onError?.();
   }
 }
 
-function enclosingLayer(rule) {
-  let current = rule.parent;
+function layerSegment(params) {
+  return normalizeLayerName(params) || "<anonymous>";
+}
+
+function enclosingLayer(node) {
+  const ancestry = [];
+  let current = node.parent;
   while (current) {
     if (current.type === "atrule" && current.name.toLowerCase() === "layer") {
-      return current.params.trim();
+      ancestry.unshift(layerSegment(current.params));
     }
     current = current.parent;
   }
-  return null;
+  return ancestry.length > 0 ? ancestry.join(".") : null;
+}
+
+function isInsideKeyframes(node) {
+  let current = node.parent;
+  while (current) {
+    if (current.type === "atrule" && current.name.toLowerCase().endsWith("keyframes")) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+function hasStyleRuleAncestor(node) {
+  let current = node.parent;
+  while (current) {
+    if (current.type === "rule") return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+function hasInjectedStyleRuleAncestor(node) {
+  let current = node.parent;
+  while (current) {
+    if (current.type === "rule") {
+      let authoredClass = false;
+      let globalClass = false;
+      parseSelectors(current, (selectors) => {
+        selectors.walkClasses((classNode) => {
+          if (isGlobalClass(classNode)) globalClass = true;
+          else authoredClass = true;
+        });
+      });
+      if (globalClass && !authoredClass) return true;
+    }
+    current = current.parent;
+  }
+  return false;
 }
 
 function isGlobalClass(classNode) {
@@ -161,19 +205,13 @@ const plugins = [
     (root, options, warn) => {
       if (!options.colorContractEnabled) return;
       root.walkDecls((declaration) => {
-        valueParser(declaration.value).walk((node) => {
-          const rawFunction =
-            node.type === "function" &&
-            /^(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color)$/i.test(node.value);
-          const rawHex = node.type === "word" && /^#[\da-f]{3,8}$/i.test(node.value);
-          const rawNamed = node.type === "word" && NAMED_COLORS.has(node.value.toLowerCase());
-          if (rawFunction || rawHex || rawNamed) {
-            warn(
-              declaration,
-              `Raw color ${valueParser.stringify(node)} must be routed through a semantic token.`,
-            );
-          }
-        });
+        const positions = colorValuePositions(declaration, { colorNames: NAMED_COLORS });
+        for (const node of positions.raw) {
+          warn(
+            declaration,
+            `Raw color ${stringifyColorNode(node)} must be routed through a semantic token.`,
+          );
+        }
       });
     },
   ),
@@ -202,6 +240,7 @@ const plugins = [
     (root, options, warn) => {
       if (options.expectedLayer === undefined) return;
       root.walkRules((rule) => {
+        if (isInsideKeyframes(rule)) return;
         const actual = enclosingLayer(rule);
         if (actual !== options.expectedLayer) {
           const expected = options.expectedLayer
@@ -216,20 +255,47 @@ const plugins = [
     },
   ),
   plugin(
+    "css-modules/keyframes-layer-by-profile",
+    "Place named animation definitions in the layer selected by the project profile.",
+    (root, options, warn) => {
+      if (options.expectedLayer === undefined) return;
+      root.walkAtRules((atRule) => {
+        if (!atRule.name.toLowerCase().endsWith("keyframes")) return;
+        const actual = enclosingLayer(atRule);
+        if (actual === options.expectedLayer) return;
+        const expected = options.expectedLayer
+          ? `@layer ${options.expectedLayer}`
+          : "an unlayered rule";
+        warn(
+          atRule,
+          `Expected ${expected} for keyframe definition; found ${
+            actual ? `@layer ${actual}` : "an unlayered keyframe definition"
+          }.`,
+        );
+      });
+    },
+  ),
+  plugin(
     "css-modules/no-descendant-type",
     "Give authored descendants an owned class instead of selecting their element type.",
     (root, _options, warn) => {
       root.walkRules((rule) => {
-        parseSelectors(rule, (selectors) => {
-          selectors.each((selector) => {
-            inspectDescendantTypes(
-              selector,
-              { ownedClassSeen: false, relationshipSeen: false },
-              (node) =>
+        if (isInsideKeyframes(rule)) return;
+        if (hasInjectedStyleRuleAncestor(rule)) return;
+        const initialContext = hasStyleRuleAncestor(rule)
+          ? { ownedClassSeen: true, relationshipSeen: true }
+          : { ownedClassSeen: false, relationshipSeen: false };
+        parseSelectors(
+          rule,
+          (selectors) => {
+            selectors.each((selector) => {
+              inspectDescendantTypes(selector, initialContext, (node) =>
                 warn(rule, `Descendant type selector ${node.value} needs a local role class.`),
-            );
-          });
-        });
+              );
+            });
+          },
+          () => warn(rule, "Selector could not be analyzed; review descendant ownership manually."),
+        );
       });
     },
   ),

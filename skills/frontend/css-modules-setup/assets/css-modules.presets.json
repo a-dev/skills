@@ -1,0 +1,21 @@
+{
+  "$schema": "./css-modules.compact.schema.json",
+  "vite-react@1": {
+    "methodologyVersion": "1.0.0",
+    "profileSchemaVersion": 1,
+    "adapter": {
+      "name": "vite-react",
+      "version": "1.0.0"
+    },
+    "helpers": {
+      "classNames": "cx",
+      "cssVariables": "cssVars"
+    },
+    "layers": {
+      "order": ["reset", "base", "atoms", "ui"],
+      "localModules": {
+        "strategy": "unlayered"
+      }
+    }
+  }
+}

@@ -4,7 +4,9 @@ Load this reference when creating or updating `.agents/css-modules.json`.
 
 ## Source of truth
 
-The profile records decisions that agents cannot safely infer on every task. Executable configuration remains authoritative for runtime behavior.
+The authored profile records decisions that agents cannot safely infer on every task. Executable configuration remains authoritative for runtime behavior. Legacy and compact inputs both pass through `scripts/contract.mjs` and produce one in-memory contract; the resolved output is generated and read-only.
+
+Compact input is identified by `format: "css-modules-compact"` and `version: 1`. The pinned `vite-react@1` preset supplies methodology/adapter metadata, helpers, baseline layers, and path derivations. The compact example intentionally permits an empty `sharedApi.modules` list. See `resolved-contract.md` for the complete mapping.
 
 When the two disagree, report drift. Do not rewrite either side during audit.
 
@@ -31,11 +33,15 @@ The command surface is deliberately narrow:
 - `css:check` optionally runs CSS-specific lint or contract checks;
 - `css:verify` optionally runs a CSS-specific fixture or runtime check.
 
+Compact commands are optional. Setup derives a command only when a same-named package script and package-manager metadata are discovered; explicit `commands` values override discovery. Missing scripts remain absent and unverified. `setup.mjs show-config` and `scripts/contract.mjs` expose commands and provenance without writing.
+
+`css:check` is the preferred aggregate entry when it is recorded: `check.mjs --run-declarations` runs declaration generation and typechecking once, then the static checks. Its execution report distinguishes authored source/config edits (none) from generated declaration outputs. A relevant existing project build or component test remains an agent-owned integration step; the generic planner does not merge arbitrary Vite, TypeScript, package, or CI configuration.
+
 Do not record generic application `lint`, `test`, `build`, or `dev` commands. A project may use a broad TypeScript command behind `css:types` when that is the only way it validates generated declarations.
 
 ## Shared boundaries
 
-Preserve a coherent existing shared API. For an undecided project, propose `layout`, `typography`, and `utils`, but let the developer remove, rename, combine, or split them.
+Preserve a coherent existing shared API. Compact bootstrap starts with no shared modules; add a real module through `sharedApi.modules` or a later explicit admission decision. Do not invent empty classes. Existing projects may retain, remove, rename, combine, or split their modules.
 
 An atom is any reusable class published through the selected shared API. It may have one declaration or several related declarations.
 
@@ -47,7 +53,11 @@ Record an admission strategy:
 
 ## Layer topology
 
+The audit compares the selected order with first appearances in CSS evidence, not with a later repeated declaration. It parses the global stylesheet, named blocks/statements, and literal local imports in effective order while ignoring comments. External, conditional, cyclic, unreadable, or invalidly placed imports are reported as not-verifiable. An anonymous layer does not make a nested named layer a top-level layer.
+
 Layer names and modules are separate. Several shared modules may belong to one layer.
+
+The checker uses exact layer identity. A dotted name such as `atoms.compound` and nested blocks `@layer atoms { @layer compound { ... } }` describe the same identity, but neither is silently collapsed to the parent `atoms`. An anonymous layer is recorded as an anonymous ancestry segment and never satisfies a named layer. The selected ownership policy is exact for both style rules and named animation definitions: shared keyframes must be in their recorded layer, while local unlayered modules may keep unlayered keyframes. Keyframe steps are not DOM style rules and are checked by the dedicated `css-modules/keyframes-layer-by-profile` diagnostic.
 
 The reference proposal is:
 
@@ -84,7 +94,7 @@ Treat any remaining `{{PLACEHOLDER}}` as a setup failure. Render placeholders fr
 
 When `colorTokens.enabled` is false, render `COLOR_IMPORTS` and `COLOR_SCHEME_BLOCK` as empty strings. Do not create the palette or colors files.
 
-When it is true, `COLOR_SCHEME_BLOCK` must use the selected base layer, `colorTokens.themeAttribute`, and the recorded modes. Semantic tokens must map palette values to roles; component modules consume the roles, never the palette.
+When it is true, `COLOR_SCHEME_BLOCK` must use the selected base layer, `colorTokens.themeAttribute`, and the recorded modes. Built-in modes map as `system → light dark`, `light → light`, and `dark → dark`; a light-only mode produces a light base scheme. Existing custom mode labels require `colorTokens.modeMapping` with one of `light`, `dark`, or `light dark`, and are never emitted as arbitrary `color-scheme` values. Semantic tokens must map palette values to roles; component modules consume the roles, never the palette.
 
 The reference component is not a template. It lives in `fixtures/vite-react/` as adapter evidence, and `references/reference-fixture.md` explains why it is never copied into a target application.
 
@@ -92,10 +102,18 @@ Do not create optional modules to make the reference map appear complete. Create
 
 Color templates apply only when `colorTokens.enabled` is true. Palette values require project input; never invent a brand palette silently.
 
+## Runtime export provenance
+
+When enforcement is enabled, `sharedApi.modules[].export` is a runtime CSS-module contract, not just a name in a barrel. The bundled checker follows direct default CSS-module re-exports, local imported bindings, and relative `export *` barrels. A proven wrong value, wrong module, or type-only export is a violation. External imports, namespace values, cycles, and unresolved expressions are reported as analysis uncertainty; no finding is treated as proof in those cases.
+
+ESLint is the default aggregate engine and does not install Oxlint. Compact `lintEngine: "oxlint"` is an explicit optional selection; it adds the Oxlint adapter and dependency while retaining Stylelint and cross-file coverage.
+
 ## Profile validation
 
 Copy the schema beside the project profile so editors and offline checks can resolve it.
 
 The audit validates required shape without executing application code. Behavioral verification remains a separate explicit action.
+
+Setup preflights normalized destinations and canonicalizes existing parent paths before mutation. A symlink whose resolved parent remains inside the target root is allowed; an escaping parent, duplicate destination, or changed preimage blocks the write set. This is not transactional or adversarial race protection: a filesystem change after preflight can still produce a partial apply, which reports touched files.
 
 If the methodology, schema, or adapter version differs from the supported version, read `references/migrations.md`. Audit reports the mismatch; only explicit `migrate` mode may rewrite the profile or executable configuration.

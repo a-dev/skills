@@ -1,3 +1,3 @@
-export { {{CLASS_HELPER}}, type ClassValue } from "./lib/cx";
-export { {{CSS_VARIABLE_HELPER}} } from "./lib/css-vars";
+export { {{CLASS_HELPER}}, type ClassValue } from "{{CLASS_HELPER_SPECIFIER}}";
+export { {{CSS_VARIABLE_HELPER}} } from "{{CSS_VARIABLE_HELPER_SPECIFIER}}";
 {{SHARED_EXPORTS}}

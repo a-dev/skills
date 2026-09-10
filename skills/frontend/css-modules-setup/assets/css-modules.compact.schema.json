@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./css-modules.compact.schema.json",
+  "title": "Compact CSS Modules project choices",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "preset", "styles", "composition", "colors", "checks"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": "css-modules-compact" },
+    "version": { "const": 1 },
+    "preset": { "enum": ["vite-react@1"] },
+    "appRoot": { "type": "string", "minLength": 1 },
+    "styles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "alias"],
+      "properties": {
+        "root": { "type": "string", "minLength": 1 },
+        "alias": { "type": "string", "minLength": 1 },
+        "subpath": { "type": "string", "minLength": 1 },
+        "globalStylesheet": { "type": "string", "minLength": 1 },
+        "entryPoint": { "type": "string", "minLength": 1 }
+      }
+    },
+    "helpers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "classNames": { "type": "string", "minLength": 1 },
+        "cssVariables": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sharedApi": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entryPoint": { "type": "string", "minLength": 1 },
+        "modules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "path", "layer"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "export": { "type": ["string", "null"] },
+              "path": { "type": "string", "minLength": 1 },
+              "layer": { "type": "string", "minLength": 1 },
+              "publicClasses": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        },
+        "admissionRule": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["strategy"],
+          "properties": {
+            "strategy": { "enum": ["project-review", "second-semantic-consumer", "explicit"] },
+            "document": { "type": "string" }
+          }
+        }
+      }
+    },
+    "layers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "ownership": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["glob", "layer"],
+            "properties": {
+              "glob": { "type": "string", "minLength": 1 },
+              "layer": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "localModules": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["strategy"],
+          "properties": {
+            "strategy": { "enum": ["unlayered", "profiled", "custom"] },
+            "layer": { "type": "string", "minLength": 1 },
+            "document": { "type": "string" }
+          }
+        },
+        "importantPolicy": { "type": "string" }
+      }
+    },
+    "composition": { "enum": ["markup", "composes", "mixed-with-rule"] },
+    "compositionRule": { "type": "string" },
+    "colors": {
+      "type": ["boolean", "object"],
+      "additionalProperties": false,
+      "properties": {
+        "paletteFiles": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "semanticFiles": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "themeOwner": { "type": "string", "minLength": 1 },
+        "themeAttribute": { "type": "string", "minLength": 1 },
+        "modes": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+        "modeMapping": {
+          "type": "object",
+          "additionalProperties": { "enum": ["light", "dark", "light dark"] }
+        }
+      }
+    },
+    "checks": { "enum": ["off", "warn", "error"] },
+    "enforcement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity"],
+      "properties": {
+        "severity": { "enum": ["warning", "error"] },
+        "privateBooleanAttributes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^data-[a-z0-9-]+$" }
+        }
+      }
+    },
+    "lintEngine": { "enum": ["eslint", "oxlint"] },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "css:generate": { "type": "string", "minLength": 1 },
+        "css:types": { "type": "string", "minLength": 1 },
+        "css:check": { "type": "string", "minLength": 1 },
+        "css:verify": { "type": "string", "minLength": 1 }
+      }
+    },
+    "runtimeVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entry": { "type": "string" },
+        "themes": { "$ref": "#/$defs/stringArray" },
+        "viewports": { "$ref": "#/$defs/stringArray" },
+        "interactions": { "$ref": "#/$defs/stringArray" },
+        "states": { "$ref": "#/$defs/stringArray" },
+        "preferences": { "$ref": "#/$defs/stringArray" },
+        "directions": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "scope", "reason"],
+        "properties": {
+          "kind": { "type": "string" },
+          "scope": { "type": "string" },
+          "reason": { "type": "string" },
+          "rule": { "type": "string", "minLength": 1 },
+          "match": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "extensions": { "type": "object", "additionalProperties": true }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    }
+  }
+}

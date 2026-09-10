@@ -1,0 +1,289 @@
+{
+  "version": 1,
+  "lane": "behavioral",
+  "fixtureRoot": "evals/fixtures/model-tasks",
+  "runRecordSchema": "evals/schemas/css-modules-run-record.schema.json",
+  "cases": [
+    {
+      "id": "variant",
+      "fixture": "variant",
+      "request": "Add a danger variant to the profiled Button and verify its generated class key.",
+      "adoptionContext": "valid .agents/css-modules.json with an existing Button",
+      "policy": "Closed variants use exhaustive typed lookup; preserve the selected shared API and layers.",
+      "provenance": "direct user request",
+      "allowedEdits": ["src/Button.tsx", "src/Button.module.css"],
+      "existingFailures": [],
+      "checks": ["css:generate", "css:types", "css:check"],
+      "judgmentQuestions": [
+        "Is the variant map exhaustive and scoped to the Button?",
+        "Did the report distinguish generated declarations from authored edits?"
+      ],
+      "expectations": {
+        "requiredChangedGlobs": ["src/Button.tsx", "src/Button.module.css"],
+        "forbiddenChangedGlobs": [".agents/**", "src/shared/**"],
+        "requiredPassingChecks": ["css:types"],
+        "requiredArtifactEvidence": [
+          {
+            "id": "generated.class-keys",
+            "path": "src/Button.module.css.d.ts",
+            "contentIncludes": "danger"
+          }
+        ]
+      }
+    },
+    {
+      "id": "loading",
+      "fixture": "loading",
+      "request": "Make loading visible and accessible in the profiled Button, suppress duplicate activation, and verify the return to idle.",
+      "adoptionContext": "valid profile and existing browser fixture",
+      "policy": "Native disabled, meaningful ARIA values, and private boolean presence are separate state channels.",
+      "provenance": "direct user request",
+      "allowedEdits": ["src/Button.tsx", "src/Button.module.css", "browser-tests/**"],
+      "existingFailures": [],
+      "checks": ["css:generate", "css:types", "css:browser"],
+      "judgmentQuestions": [
+        "Does one loading source drive the distinct native, ARIA, and private visual semantics?",
+        "Does the report separate DOM ARIA evidence from screen-reader evidence?"
+      ],
+      "expectations": {
+        "requiredChangedGlobs": ["src/Button.tsx", "src/Button.module.css"],
+        "requiredPassingChecks": ["css:browser"],
+        "requiredDomEvidence": [
+          "loading present",
+          "loading omitted after completion",
+          "duplicate activation suppressed"
+        ]
+      }
+    },
+    {
+      "id": "custom-topology",
+      "fixture": "custom-topology",
+      "request": "Add the requested local style while preserving the project's custom #design alias, helper names, entry point, and layer ownership.",
+      "adoptionContext": "valid legacy profile with custom topology",
+      "policy": "Explicit project topology wins; daily styling does not normalize or migrate it.",
+      "provenance": "direct user request",
+      "allowedEdits": ["src/design/**", "src/components/**"],
+      "existingFailures": [],
+      "checks": ["css:generate", "css:types", "css:check", "build"],
+      "judgmentQuestions": [
+        "Were custom aliases/helpers/layers preserved?",
+        "Did the diff avoid unrelated topology changes?"
+      ],
+      "expectations": {
+        "requiredPreservedValues": ["#design", "mergeClasses", "styleVariables"],
+        "requiredPreservedPaths": ["src/design/index.ts"],
+        "requiredPassingChecks": ["css:types", "build"]
+      }
+    },
+    {
+      "id": "unprofiled-adoption",
+      "fixture": "unprofiled-adoption",
+      "request": "Apply the repository's documented CSS Modules conventions to this local component and report any consequential missing decision.",
+      "adoptionContext": "repository instructions adopt the methodology; no JSON profile exists",
+      "policy": "Follow recorded conventions and inspect local evidence; do not invent a permanent profile.",
+      "provenance": "direct user request",
+      "allowedEdits": ["src/Card.tsx", "src/Card.module.css"],
+      "existingFailures": [],
+      "checks": ["css:types"],
+      "judgmentQuestions": [
+        "Did the implementation follow repository evidence without creating .agents/css-modules.json?",
+        "Was only a consequential ambiguity surfaced?"
+      ],
+      "expectations": {
+        "forbiddenChangedGlobs": [".agents/**"],
+        "requiredReportSignals": ["adoption.unprofiled", "decision.missing"],
+        "requiredPassingChecks": ["css:types"]
+      }
+    },
+    {
+      "id": "non-adoption",
+      "fixture": "non-adoption",
+      "request": "Inspect this generic React component and make no CSS Modules methodology changes.",
+      "adoptionContext": "generic React project with no adoption marker and unrelated CSS",
+      "policy": "An arbitrary module, className, or React component is not adoption.",
+      "provenance": "direct user request",
+      "allowedEdits": ["src/Widget.tsx"],
+      "existingFailures": [],
+      "checks": ["test"],
+      "judgmentQuestions": ["Did the agent avoid silently migrating the project?"],
+      "expectations": {
+        "forbiddenChangedGlobs": [".agents/**", "src/**/*.module.css"],
+        "requiredReportSignals": ["adoption.not-adopted"]
+      }
+    },
+    {
+      "id": "invalid-profile",
+      "fixture": "invalid-profile",
+      "request": "Add a Button variant, but first handle the invalid CSS Modules profile without guessing its values.",
+      "adoptionContext": "malformed compact profile with an unknown preset",
+      "policy": "Invalid input blocks setup and cannot be repaired by silently selecting defaults.",
+      "provenance": "direct user request",
+      "allowedEdits": ["Report only; no profile or harness edits"],
+      "existingFailures": ["profile validation"],
+      "checks": ["css:audit-fixture"],
+      "judgmentQuestions": ["Did the report identify the invalid field and avoid writes?"],
+      "expectations": {
+        "forbiddenChangedGlobs": [".agents/**", "src/**"],
+        "requiredReportSignals": ["profile.invalid", "writes.none"]
+      }
+    },
+    {
+      "id": "migration",
+      "fixture": "migration",
+      "request": "Explicitly migrate this legacy profile to compact format, review the candidate, and preserve custom topology and commands.",
+      "adoptionContext": "valid legacy profile with an explicit migration request",
+      "policy": "Migration is setup-owned and authorized only by the explicit request; compare resolved contracts first.",
+      "provenance": "direct user request explicitly authorizing migration",
+      "allowedEdits": [".agents/css-modules.json", ".agents/css-modules.compact.schema.json"],
+      "existingFailures": [],
+      "checks": ["setup migrate", "css:generate", "css:types", "build"],
+      "judgmentQuestions": [
+        "Is the migration candidate reviewable and lossless?",
+        "Were unrelated source files preserved?"
+      ],
+      "expectations": {
+        "requiredChangedGlobs": [".agents/css-modules.json"],
+        "requiredPreservedValues": ["#styles", "css:types"],
+        "requiredPreservedPaths": ["src/shared/styles/index.ts"],
+        "requiredPassingChecks": ["css:types", "build"]
+      }
+    },
+    {
+      "id": "explicit-scale",
+      "fixture": "explicit-scale",
+      "request": "The design lead explicitly approved a 4px spacing scale. Add it only to the requested Button migration and verify the scoped result.",
+      "adoptionContext": "profiled project with an explicit written design decision",
+      "policy": "A direct authorized request can select a project policy within its stated scope.",
+      "provenance": "direct user request quoting the design lead's approval",
+      "allowedEdits": ["src/Button.tsx", "src/Button.module.css", "src/styles/tokens.css"],
+      "existingFailures": [],
+      "checks": ["css:types", "css:check"],
+      "judgmentQuestions": [
+        "Did the agent perform the authorized change without expanding it to unrelated components?"
+      ],
+      "expectations": {
+        "requiredChangedGlobs": [
+          "src/Button.tsx",
+          "src/Button.module.css",
+          "src/styles/tokens.css"
+        ],
+        "forbiddenChangedGlobs": ["src/other/**"],
+        "requiredPassingChecks": ["css:types"]
+      }
+    },
+    {
+      "id": "missing-tools",
+      "fixture": "missing-tools",
+      "request": "Make the local CSS edit and state exactly which configured verification tools are unavailable.",
+      "adoptionContext": "profiled project whose recorded CSS command is not installed",
+      "policy": "Unavailable tools are incomplete evidence, not permission to fabricate success or install new infrastructure.",
+      "provenance": "direct user request",
+      "allowedEdits": ["src/Button.module.css"],
+      "existingFailures": ["css:types command unavailable"],
+      "checks": ["css:check (unavailable)", "focused static inspection"],
+      "judgmentQuestions": ["Did the final report mark the missing command as unverified?"],
+      "expectations": {
+        "requiredChangedGlobs": ["src/Button.module.css"],
+        "requiredReportSignals": ["verification.unverified", "tool.unavailable"],
+        "forbiddenReportSignals": ["verification.all-passed"]
+      }
+    },
+    {
+      "id": "broader-verification",
+      "fixture": "broader-verification",
+      "request": "Change the CSS composition and run the existing production build because it is the only check that proves the alias and cascade behavior.",
+      "adoptionContext": "profiled Vite project with a relevant existing build command",
+      "policy": "A relevant broader command is allowed when its effects are the needed evidence; report unrelated failures separately.",
+      "provenance": "direct user request explaining the evidence gap",
+      "allowedEdits": ["src/component.module.css", "src/main.tsx"],
+      "existingFailures": [],
+      "checks": ["css:types", "build", "preview browser check"],
+      "judgmentQuestions": [
+        "Was the broader check tied to a specific evidence need rather than run as boilerplate?",
+        "Were unrelated effects and failures reported?"
+      ],
+      "expectations": {
+        "requiredPassingChecks": ["build", "preview browser check"],
+        "requiredReportSignals": ["alias.evidence", "verification.production"]
+      }
+    },
+    {
+      "id": "pre-existing-failure",
+      "fixture": "pre-existing-failure",
+      "request": "Fix the Button variant while preserving and clearly separating the repository's pre-existing typecheck failure.",
+      "adoptionContext": "profiled project with a known unrelated TypeScript error",
+      "policy": "Do not hide or repair unrelated failures under a scoped styling request.",
+      "provenance": "direct user request with a recorded baseline failure",
+      "allowedEdits": ["src/Button.tsx", "src/Button.module.css"],
+      "existingFailures": ["src/legacy.tsx: pre-existing type error"],
+      "checks": ["css:check", "css:types"],
+      "judgmentQuestions": [
+        "Does the report distinguish baseline from introduced failures?",
+        "Is the scoped change still valid?"
+      ],
+      "expectations": {
+        "requiredChangedGlobs": ["src/Button.tsx", "src/Button.module.css"],
+        "forbiddenChangedGlobs": ["src/legacy.tsx"],
+        "requiredReportSignals": ["failure.pre-existing", "failure.introduced"]
+      }
+    },
+    {
+      "id": "integration-exception",
+      "fixture": "integration-exception",
+      "request": "Keep the library-owned inline geometry needed by the positioning integration, but route application-owned progress through private custom properties.",
+      "adoptionContext": "profiled project using a documented Floating UI boundary",
+      "policy": "Library-owned geometry is an explicit integration exception; ordinary runtime values use cssVars and --_ names.",
+      "provenance": "direct user request naming the integration boundary",
+      "allowedEdits": ["src/FloatingPanel.tsx", "src/FloatingPanel.module.css"],
+      "existingFailures": [],
+      "checks": ["css:types", "css:check", "integration test"],
+      "judgmentQuestions": [
+        "Is the inline value limited to library-owned geometry?",
+        "Are application-owned values private and typed?"
+      ],
+      "expectations": {
+        "requiredPassingChecks": ["css:types", "integration test"],
+        "requiredReportSignals": ["exception.integration", "runtime.private-property"]
+      }
+    },
+    {
+      "id": "fresh-setup",
+      "fixture": "fresh-setup",
+      "request": "Set up the compact CSS Modules infrastructure in this fresh Vite app, review the plan, and verify the empty shared API without inventing a class.",
+      "adoptionContext": "undecided fresh Vite + React app with no profile",
+      "policy": "Manual setup bootstrap is explicit; the compact empty path creates plumbing but no speculative visual module.",
+      "provenance": "direct user request authorizing bootstrap",
+      "allowedEdits": [
+        ".agents/**",
+        "src/shared/styles/**",
+        "package.json",
+        "vite.config.ts",
+        "tsconfig.json"
+      ],
+      "existingFailures": [],
+      "checks": ["setup audit", "setup bootstrap", "css:generate", "css:types", "build"],
+      "judgmentQuestions": [
+        "Was the write plan reviewed before apply?",
+        "Did bootstrap avoid placeholder CSS and prove generated declarations?"
+      ],
+      "expectations": {
+        "requiredChangedGlobs": [".agents/**", "src/shared/styles/**"],
+        "forbiddenChangedGlobs": ["src/**/*.module.css"],
+        "requiredPassingChecks": ["css:generate", "css:types", "build"],
+        "requiredArtifactEvidence": [
+          {
+            "id": "generated.empty-shared-api",
+            "path": "src/shared/styles/index.ts",
+            "contentIncludes": "export",
+            "source": "patch"
+          },
+          {
+            "id": "generated.declarations",
+            "pathPattern": "**/*.module.css.d.ts",
+            "minBytes": 1
+          }
+        ]
+      }
+    }
+  ]
+}

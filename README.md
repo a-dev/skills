@@ -1,6 +1,6 @@
 # Skills
 
-Agent skills, plus the scripts that keep them honest. Sources live under `skills/`, grouped by domain.
+Agent skills and scripts that test their behavior. Sources live under `skills/`, grouped by domain.
 
 ## Catalog
 
@@ -8,16 +8,16 @@ Agent skills, plus the scripts that keep them honest. Sources live under `skills
 
 #### CSS Modules
 
-Read the article: [Atoms, layers, types, tokens: a new CSS methodology built on CSS Modules](https://dev.to/a-dev/atoms-layers-types-tokens-a-new-css-methodology-built-on-css-modules-35ke)
+Background article: [Atoms, layers, types, tokens: a new CSS methodology built on CSS Modules](https://dev.to/a-dev/atoms-layers-types-tokens-a-new-css-methodology-built-on-css-modules-35ke)
 
 | Skill                                                             | Invocation                   | Purpose                                                                   |
 | ----------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------- |
 | [`css-modules-setup`](skills/frontend/css-modules-setup/SKILL.md) | manual                       | read-only audit plus explicit bootstrap, align, migrate, and verify modes |
-| [`css-modules`](skills/frontend/css-modules/SKILL.md)             | model-invoked after adoption | profile-driven per-edit styling discipline                                |
+| [`css-modules`](skills/frontend/css-modules/SKILL.md)             | model-invoked after adoption | styling edits guided by the project profile                                |
 
 ## Install skills
 
-See what is in here before installing anything:
+List the available skills:
 
 ```sh
 npx skills add a-dev/skills --list
@@ -25,17 +25,18 @@ npx skills add a-dev/skills --list
 
 ### Frontend CSS Modules
 
-An applied `css-modules-setup` plan creates two project-contract files:
+An applied `css-modules-setup` plan creates a project profile and its matching local schema:
 
 ```text
 .agents/
   css-modules.json
-  css-modules.schema.json
+  css-modules.schema.json              # legacy profile
+  css-modules.compact.schema.json      # compact profile
 ```
 
-`css-modules.json` holds your decisions. It is the file you edit, and the one the skills and the harness read.
+`css-modules.json` records your project decisions in the compact `css-modules-compact` format or the supported legacy format. Edit this file; the skills and harness read it.
 
-`css-modules.schema.json` holds no decisions at all. It describes what a valid profile looks like, so your editor can check the file, autocomplete the keys, and catch a typo before a script hits it. Any JSON Schema tool can read it too. Setup copies it next to the profile so it works offline and travels with the repo, whatever agent host your teammates run and however they installed the skill.
+`css-modules.schema.json` or `css-modules.compact.schema.json` defines the valid profile structure for editor validation and autocomplete. Setup copies the matching schema beside the profile so it works offline across agent hosts and installation methods. `show-config` displays the resolved contract as read-only output.
 
 `audit` and `verify` write neither file. Both are read-only.
 
@@ -43,7 +44,7 @@ An applied `css-modules-setup` plan creates two project-contract files:
 
 ## Frontend CSS Modules harness
 
-Vite plus React (TanStack Start included) is the only stack with a [tested adapter](skills/frontend/css-modules-setup/adapters/vite-react.md). The methodology itself is portable, but the adapter is not: `patchCssModules` and its generated declarations are Vite plugins, so a non-Vite bundler such as Next.js needs its own adapter and its own declaration, contract, build, and browser fixtures. (Next.js is in the plan)
+Vite plus React (TanStack Start included) is the only stack with a [tested adapter](skills/frontend/css-modules-setup/adapters/vite-react.md). The methodology is portable. The adapter uses the Vite plugin `patchCssModules` for generated declarations. A non-Vite bundler such as Next.js needs a separate adapter with declaration, contract, build, and browser fixtures.
 
 ### Adoption flow
 
@@ -52,24 +53,22 @@ Vite plus React (TanStack Start included) is the only stack with a [tested adapt
 3. Review discovered choices and any ambiguity.
 4. Select `bootstrap` for an undecided app or `align` for a compatible existing app.
 5. Review the mutation plan before files change.
-6. Verify `.agents/css-modules.json`, configured commands, and the disposable reference fixture.
+6. Verify `.agents/css-modules.json`, configured commands, the real generated-project scenarios, and the disposable reference fixture.
 7. Confirm a second setup dry run proposes no changes.
 
-Migration is a separate step and runs only when you ask for it. Audit and verification never touch source or configuration. Splitting them that way is the whole point. You get to look before anything moves.
+Migration requires an explicit request. Audit and verification leave authored source and configuration unchanged.
 
 ### Project contract
 
-Setup writes the profile once. Every styling edit after that obeys it.
+Setup creates a profile for one app, and subsequent styling edits follow it. The profile records aliases, helpers, the shared API, layer topology, optional semantic colors, and the project's CSS verification commands.
 
-The profile covers one app. It records the aliases and helpers that app uses, its shared API, its layer topology, and a semantic color contract if you want one. It also stores the commands that verify your CSS, so the harness runs your checks instead of a default guess.
+The profile does not define spacing, sizing, typography, or shape scales. Existing project conventions govern those choices.
 
-It says nothing about spacing, sizing, typography, or shape scales. Those are yours. A skill has no business inventing your design system.
-
-Three things in the profile carry their own version number: the portable methodology, the JSON schema, and the stack adapter. [`versions.json`](skills/frontend/css-modules-setup/versions.json) adds the skill package version and the oldest dependency versions the adapter was tested against. Audit reads that manifest and reports an unsupported version without rewriting it. Versions move only through a migration plan you asked for.
+The profile versions three contracts separately: the portable methodology, the JSON schema, and the stack adapter. [`versions.json`](skills/frontend/css-modules-setup/versions.json) adds the skill package version and the oldest dependency versions the adapter was tested against. Audit reads that manifest and reports an unsupported version without rewriting it. Version changes require an explicitly requested migration plan.
 
 ### Mechanical checks
 
-Turn on `enforcement` in the profile and setup installs a checker that runs ESLint, Stylelint, and the contract rules. It sits next to your lint configuration. It does not replace it.
+Turn on `enforcement` in the profile and setup installs a checker that runs ESLint, Stylelint, and the contract rules. The checker preserves your existing lint configuration.
 
 ```sh
 node .agents/css-modules-harness/scripts/check.mjs \
@@ -77,11 +76,11 @@ node .agents/css-modules-harness/scripts/check.mjs \
   --run-declarations
 ```
 
-One command, in this order: the recorded declaration generator, the CSS typecheck, the TSX rules, the CSS rules, and the contract checks that span files.
+The command runs these checks in order: the recorded declaration generator, the CSS typecheck, the TSX rules, the CSS rules, and the contract checks that span files.
 
 You can start every rule at warning severity and promote them to errors when the project is ready. Rule IDs never change, so that promotion edits severity and nothing else.
 
-No rule can tell you what earns a place in shared, how tightly semantics should couple, whether the page actually looks right, or what your spacing policy should be. That part stays with review, and probably always will.
+Review still determines which styles belong in the shared API, which semantics should be coupled, whether the page looks right, and which spacing policy to use.
 
 ### Read-only audit
 
@@ -105,7 +104,7 @@ Add `--check` when CI runs the audit. It stays read-only and turns the findings 
 
 ### Setup planner
 
-The bundled planner covers all five setup modes and prints a dry run by default. Writing is opt-in.
+The bundled planner supports `audit`, `bootstrap`, `align`, `migrate`, `verify`, and `show-config`. It prints a dry run by default; writes require explicit flags.
 
 ```sh
 node skills/frontend/css-modules-setup/scripts/setup.mjs bootstrap \
@@ -118,7 +117,7 @@ Only `bootstrap`, `align`, and an explicitly authorized `migrate` plan accept `-
 
 ### Development checks
 
-These commands are for working on the skills themselves. A project that installed them needs none of this.
+Use these commands when developing this repository. Projects using the skills do not need them.
 
 Install the pinned development dependencies, then run everything:
 
@@ -128,16 +127,16 @@ npx playwright install chromium
 npm run css:verify
 ```
 
-For narrower loops, use `css:check`, `css:oxlint`, `css:audit-fixture`, `css:fixture`, or `css:browser`.
+For narrower loops, use `css:check`, `css:oxlint`, `css:audit-fixture`, `css:eval:fixtures`, `css:evaluate`, `css:eval:grader`, `css:eval:run`, `css:fixture`, or `css:browser`.
 
-The fixture list is long on purpose. It covers:
+The fixtures cover:
 
 - npm, pnpm, Yarn, and Bun
 - Vite config variants, plus layer maps that use the reference names and layer maps that rename them
-- installation itself, meaning Codex and Claude Code discovery paths, duplicate installs, ownership, CI, and version drift
-- setup that stays safe when you run it twice
+- Codex and Claude Code discovery paths, duplicate installs, ownership, CI, and version drift
+- safe repeated setup
 - ESLint, Oxlint, Stylelint, and the contract rules
 - declarations, TypeScript, alias composition, and semantic colors
 - DOM state, accessibility behavior, and the cascade as Chromium computes it
 
-Evaluation scenarios live under `evals/`. The prompts sit in `evals/css-modules.json` in machine-readable form, and `scripts/evaluate.mjs` scores a host's answers against them, recorded or live, by trigger. None of it ships with the skills.
+Evaluation scenarios live under `evals/`. `evals/css-modules.json` and `scripts/evaluate.mjs` are deterministic scorer tests over checked-in sample responses; their pass count does not measure whether models follow the skills. Behavioral cases, immutable task blueprints, run-record schema/template, fixture preparation, and artifact-based grading live under `evals/cases`, `evals/fixtures`, and `scripts/grade-evaluation.mjs`. Live comparison evidence is a separate, explicitly authorized Task 31 workflow and is currently pending; CI never invokes models.

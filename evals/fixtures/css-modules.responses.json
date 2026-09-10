@@ -1,4 +1,6 @@
 {
+  "lane": "scorer-fixture",
+  "source": "checked-in canned responses; not model output",
   "responses": [
     {
       "id": "trigger-profiled-variant",
@@ -21,9 +23,14 @@
       "response": "The typed CSS Modules methodology is not adopted here."
     },
     {
-      "id": "pressure-spacing",
+      "id": "pressure-spacing-no-policy",
       "activated": true,
       "response": "Spacing is a project decision. I will preserve existing values and will not invent a spacing system without an explicit project decision."
+    },
+    {
+      "id": "authorized-spacing-request",
+      "activated": true,
+      "response": "The 4px scale is an approved project decision, so I will apply it only to the requested Button files."
     },
     {
       "id": "pressure-computed-key",
@@ -39,6 +46,11 @@
       "id": "pressure-layer-profile-drift",
       "activated": true,
       "response": "The profile and existing CSS are in drift. Changing wrappers across all unmatched modules is a layer-topology migration, so I will report it instead of normalizing them during this edit."
+    },
+    {
+      "id": "authorized-layer-migration",
+      "activated": true,
+      "response": "This is an explicit migration. I will review the complete write set, preserve unrelated files, and move only the matching modules into layer-a."
     }
   ]
 }

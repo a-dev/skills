@@ -9,23 +9,22 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
-import valueParser from "postcss-value-parser";
 import stylelint from "stylelint";
 
 import eslintPlugin, { eslintRuleIds } from "../harness/eslint-plugin.mjs";
 import stylelintPlugins, { stylelintRuleIds } from "../harness/stylelint-plugin.mjs";
+import { colorValuePositions } from "./color-analysis.mjs";
 import {
   escapeRegExp,
   exists,
   exitCodeForFindings,
   finalizeFindings,
   formatFindingsReport,
-  matchesGlob,
-  readProfile,
   resolveInside,
   selectSeverity,
   walk,
 } from "./lib.mjs";
+import { readResolvedContract, resolveLayerOwner, sharedApiInterpretation } from "./contract.mjs";
 
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".mts", ".cjs", ".cts"]);
 
@@ -48,7 +47,7 @@ async function paletteTokens(root, profile) {
 }
 
 function layerOwners(profile, relativeFile) {
-  return profile.layers.ownership.filter(({ glob }) => matchesGlob(relativeFile, glob));
+  return resolveLayerOwner(profile, relativeFile).matches;
 }
 
 // Returns the layer the file must declare, null when it must stay unlayered, or
@@ -56,15 +55,8 @@ function layerOwners(profile, relativeFile) {
 // glob is ambiguous, not a fallback: css-modules/layer-ownership-ambiguous
 // reports it rather than this rule guessing a layer.
 function expectedLayer(profile, relativeFile) {
-  const owners = layerOwners(profile, relativeFile);
-  if (owners.length > 1) return undefined;
-  if (owners.length === 1) return owners[0].layer;
-  if (!relativeFile.endsWith(".module.css")) return undefined;
-  if (profile.layers.localModules.strategy === "profiled") {
-    return profile.layers.localModules.layer;
-  }
-  if (profile.layers.localModules.strategy === "unlayered") return null;
-  return undefined;
+  const owner = resolveLayerOwner(profile, relativeFile);
+  return owner.status === "resolved" ? owner.layer : undefined;
 }
 
 async function runEslint(root, profile, severity) {
@@ -96,6 +88,7 @@ async function runEslint(root, profile, severity) {
             privateBooleanAttributes: profile.enforcement?.privateBooleanAttributes ?? [
               "data-loading",
             ],
+            ...sharedApiInterpretation(profile),
           },
         },
       },
@@ -198,7 +191,7 @@ function resolveComposesSpecifier(profile, specifier) {
     : null;
 }
 
-const RE_EXPORT_EXTENSIONS = [".ts", ".tsx", ".mts", ".js", ".jsx", ".mjs"];
+const RE_EXPORT_EXTENSIONS = [".ts", ".tsx", ".mts", ".js", ".jsx", ".mjs", ".cjs", ".cts"];
 
 async function resolveReExport(fromFile, specifier) {
   if (!specifier.startsWith(".")) return null;
@@ -214,15 +207,59 @@ async function resolveReExport(fromFile, specifier) {
   return null;
 }
 
-// Collects the names a module exports. `export * from "./x"` re-exports every
-// named export of ./x, so relative star re-exports are followed; an unresolvable
-// or unparsable target contributes nothing rather than a false missing export.
-async function exportedNames(filePath, visited = new Set()) {
-  const resolved = path.resolve(filePath);
-  if (visited.has(resolved)) return new Set();
-  visited.add(resolved);
+const CSS_EXPORT = (modulePath) => ({ kind: "css-module", modulePath });
+const TYPE_ONLY_EXPORT = { kind: "type-only" };
+const WRONG_EXPORT = (description) => ({ kind: "wrong", description });
+const UNKNOWN_EXPORT = (reason) => ({ kind: "unknown", reason });
+const MISSING_EXPORT = { kind: "missing" };
 
-  const names = new Set();
+function isTypeOnly(node) {
+  return node?.exportKind === "type" || node?.importKind === "type";
+}
+
+function literalExportState(node) {
+  if (
+    node?.type === "NumericLiteral" ||
+    node?.type === "StringLiteral" ||
+    node?.type === "BooleanLiteral" ||
+    node?.type === "NullLiteral" ||
+    node?.type === "RegExpLiteral" ||
+    (node?.type === "Literal" && node.value !== undefined)
+  ) {
+    const typeName =
+      node.type === "NumericLiteral" || node.type === "Literal"
+        ? typeof node.value
+        : node.type.replace("Literal", "").toLowerCase();
+    return WRONG_EXPORT(`a ${typeName} value`);
+  }
+  return null;
+}
+
+function unwrapExportExpression(node) {
+  if (
+    node?.type === "TSAsExpression" ||
+    node?.type === "TSTypeAssertion" ||
+    node?.type === "TSNonNullExpression" ||
+    node?.type === "TypeCastExpression"
+  ) {
+    return node.expression;
+  }
+  return node;
+}
+
+async function analyzeExportBindings(filePath, memo = new Map(), visiting = new Set()) {
+  const resolved = path.resolve(filePath);
+  if (memo.has(resolved)) return memo.get(resolved);
+  if (visiting.has(resolved)) {
+    return { complete: false, bindings: new Map(), reason: "cyclic export barrel" };
+  }
+  if (!(await exists(resolved))) {
+    const missing = { complete: true, bindings: new Map(), reason: "missing export source" };
+    memo.set(resolved, missing);
+    return missing;
+  }
+
+  visiting.add(resolved);
   let parsed;
   try {
     parsed = babelParser.parseForESLint(await readFile(resolved, "utf8"), {
@@ -231,41 +268,225 @@ async function exportedNames(filePath, visited = new Set()) {
       babelOptions: { parserOpts: { plugins: ["typescript", "jsx"] } },
     });
   } catch {
-    return names;
+    visiting.delete(resolved);
+    const unparsed = { complete: false, bindings: new Map(), reason: "unparseable export source" };
+    memo.set(resolved, unparsed);
+    return unparsed;
+  }
+
+  const bindings = new Map();
+  const localBindings = new Map();
+  let complete = true;
+  let reason;
+
+  async function sourceBindings(statement, importedName) {
+    const specifier = statement.source?.value;
+    if (typeof specifier !== "string" || !specifier.startsWith(".")) {
+      complete = false;
+      reason = "external or unresolved export source";
+      return UNKNOWN_EXPORT(reason);
+    }
+    const target = await resolveReExport(resolved, specifier);
+    if (!target) {
+      complete = false;
+      reason = `unresolved relative export source ${specifier}`;
+      return UNKNOWN_EXPORT(reason);
+    }
+    if (target.endsWith(".module.css")) {
+      if (importedName === "default") return CSS_EXPORT(target);
+      return WRONG_EXPORT(`named export ${importedName} from ${specifier}`);
+    }
+    const result = await analyzeExportBindings(target, memo, visiting);
+    if (!result.complete) {
+      complete = false;
+      reason = result.reason;
+    }
+    return (
+      result.bindings.get(importedName) ??
+      (result.complete ? MISSING_EXPORT : UNKNOWN_EXPORT(reason))
+    );
   }
 
   for (const statement of parsed.ast.body) {
-    if (statement.type === "ExportAllDeclaration") {
-      // `export * as ns from "./x"` introduces exactly one binding.
-      if (statement.exported?.type === "Identifier") {
-        names.add(statement.exported.name);
-        continue;
-      }
-      const target = await resolveReExport(resolved, statement.source.value);
-      if (target) {
-        for (const name of await exportedNames(target, visited)) names.add(name);
+    if (statement.type === "ImportDeclaration") {
+      for (const specifier of statement.specifiers) {
+        const localName = specifier.local?.name;
+        if (!localName) continue;
+        if (isTypeOnly(statement) || isTypeOnly(specifier)) {
+          localBindings.set(localName, TYPE_ONLY_EXPORT);
+          continue;
+        }
+        if (!statement.source.value.startsWith(".")) {
+          localBindings.set(localName, UNKNOWN_EXPORT("external import"));
+          complete = false;
+          reason = "external import";
+          continue;
+        }
+        if (specifier.type === "ImportNamespaceSpecifier") {
+          localBindings.set(localName, UNKNOWN_EXPORT("namespace import"));
+          complete = false;
+          reason = "namespace import provenance is not tracked";
+          continue;
+        }
+        const imported = importedNameOfSpecifier(specifier);
+        localBindings.set(localName, await sourceBindings(statement, imported));
       }
       continue;
     }
-    if (statement.type !== "ExportNamedDeclaration") continue;
-    for (const specifier of statement.specifiers) {
-      if (specifier.exported?.type === "Identifier") names.add(specifier.exported.name);
-      else if (typeof specifier.exported?.value === "string") names.add(specifier.exported.value);
+
+    if (statement.type === "VariableDeclaration") {
+      for (const item of statement.declarations) {
+        if (item.id.type !== "Identifier") continue;
+        const literal = literalExportState(unwrapExportExpression(item.init));
+        const state = literal ?? inferExportExpression(item.init, localBindings);
+        localBindings.set(item.id.name, state);
+        if (state.kind === "unknown") {
+          complete = false;
+          reason = state.reason;
+        }
+      }
+      continue;
     }
+
+    if (statement.type === "ExportAllDeclaration") {
+      if (isTypeOnly(statement)) {
+        complete = false;
+        reason = "type-only star export";
+        continue;
+      }
+      if (statement.exported) {
+        // `export * as ns` is a namespace object, not the default CSS module.
+        bindings.set(
+          statement.exported.name ?? statement.exported.value,
+          UNKNOWN_EXPORT("namespace export"),
+        );
+      } else {
+        const target = await resolveReExport(resolved, statement.source.value);
+        if (!target || target.endsWith(".module.css")) {
+          complete = false;
+          reason = target
+            ? "CSS module star export has no tracked named bindings"
+            : "unresolved star export";
+          continue;
+        }
+        const result = await analyzeExportBindings(target, memo, visiting);
+        if (!result.complete) {
+          complete = false;
+          reason = result.reason;
+        }
+        for (const [name, state] of result.bindings) {
+          if (name === "default") continue;
+          if (bindings.has(name)) {
+            bindings.set(name, UNKNOWN_EXPORT(`ambiguous star export ${name}`));
+            complete = false;
+            reason = `ambiguous star export ${name}`;
+          } else {
+            bindings.set(name, state);
+          }
+        }
+      }
+      continue;
+    }
+
+    if (statement.type !== "ExportNamedDeclaration") continue;
     const declaration = statement.declaration;
+    if (declaration) {
+      if (declaration.type === "VariableDeclaration") {
+        for (const item of declaration.declarations) {
+          if (item.id.type !== "Identifier") continue;
+          const literal = literalExportState(unwrapExportExpression(item.init));
+          const state = literal ?? inferExportExpression(item.init, localBindings);
+          localBindings.set(item.id.name, state);
+          if (state.kind === "unknown") {
+            complete = false;
+            reason = state.reason;
+          }
+        }
+      } else if (declaration.id?.type === "Identifier") {
+        localBindings.set(
+          declaration.id.name,
+          declaration.type.startsWith("TS")
+            ? TYPE_ONLY_EXPORT
+            : WRONG_EXPORT("a function or class"),
+        );
+      } else if (declaration.type.startsWith("TS")) {
+        complete = complete;
+      }
+    }
+
+    for (const specifier of statement.specifiers) {
+      const exportedName = specifier.exported?.name ?? specifier.exported?.value;
+      if (!exportedName) continue;
+      if (isTypeOnly(statement) || isTypeOnly(specifier)) {
+        bindings.set(exportedName, TYPE_ONLY_EXPORT);
+        continue;
+      }
+      if (statement.source) {
+        bindings.set(
+          exportedName,
+          await sourceBindings(statement, importedNameOfSpecifier(specifier)),
+        );
+      } else {
+        const localName = specifier.local?.name ?? specifier.local?.value;
+        const state = localBindings.get(localName);
+        if (state) bindings.set(exportedName, state);
+        else {
+          bindings.set(exportedName, UNKNOWN_EXPORT(`unresolved local export ${localName}`));
+          complete = false;
+          reason = `unresolved local export ${localName}`;
+        }
+      }
+    }
+
     if (declaration?.type === "VariableDeclaration") {
       for (const item of declaration.declarations) {
-        if (item.id.type === "Identifier") names.add(item.id.name);
+        if (item.id.type === "Identifier")
+          bindings.set(item.id.name, localBindings.get(item.id.name));
       }
     } else if (declaration?.id?.type === "Identifier") {
-      names.add(declaration.id.name);
+      bindings.set(declaration.id.name, localBindings.get(declaration.id.name));
     }
   }
-  return names;
+
+  visiting.delete(resolved);
+  const result = { complete, bindings, reason };
+  memo.set(resolved, result);
+  return result;
+}
+
+function importedNameOfSpecifier(specifier) {
+  if (specifier.type === "ImportDefaultSpecifier") return "default";
+  return (
+    specifier.imported?.name ??
+    specifier.imported?.value ??
+    specifier.local?.name ??
+    specifier.local?.value ??
+    "default"
+  );
+}
+
+function inferExportExpression(node, bindings) {
+  const expression = unwrapExportExpression(node);
+  if (!expression) return UNKNOWN_EXPORT("export has no initializer");
+  if (expression.type === "Identifier")
+    return bindings.get(expression.name) ?? UNKNOWN_EXPORT("unresolved identifier");
+  if (
+    [
+      "ArrayExpression",
+      "ArrowFunctionExpression",
+      "ClassExpression",
+      "FunctionExpression",
+      "ObjectExpression",
+    ].includes(expression.type)
+  ) {
+    return WRONG_EXPORT(`a ${expression.type.replace("Expression", "").toLowerCase()}`);
+  }
+  return UNKNOWN_EXPORT(`unsupported ${expression.type}`);
 }
 
 async function runContracts(root, profile, severity) {
   const findings = [];
+  const uncertainties = [];
   const add = (ruleId, file, node, message) =>
     findings.push(
       finding({
@@ -277,9 +498,8 @@ async function runContracts(root, profile, severity) {
         severity,
       }),
     );
+  const uncertain = (ruleId, file, message) => uncertainties.push({ ruleId, file, message });
   const semanticTokens = await semanticDefinitions(root, profile);
-  const colorProperty =
-    /^(?:color|background-color|border(?:-(?:block|inline))?(?:-(?:start|end))?-color|outline-color|text-decoration-color|caret-color|accent-color|fill|stroke)$/;
   const componentModules = await walk(resolveInside(root, profile.appRoot), (file) =>
     file.endsWith(".module.css"),
   );
@@ -301,22 +521,21 @@ async function runContracts(root, profile, severity) {
     }
     if (profile.colorTokens.enabled && !profile.colorTokens.semanticFiles.includes(relativeFile)) {
       css.walkDecls((declaration) => {
-        valueParser(declaration.value).walk((node) => {
+        for (const reference of colorValuePositions(declaration).variables) {
           if (
-            node.type === "word" &&
-            node.value.startsWith("--") &&
-            !node.value.startsWith("--_") &&
-            (node.value.startsWith("--color-") || colorProperty.test(declaration.prop)) &&
-            !semanticTokens.has(node.value)
+            reference.name.startsWith("--_") ||
+            semanticTokens.has(reference.name) ||
+            reference.hasFallback
           ) {
-            add(
-              "css-modules/semantic-token-resolves",
-              relativeFile,
-              declaration,
-              `Semantic color token ${node.value} is not defined by the recorded color contract.`,
-            );
+            continue;
           }
-        });
+          add(
+            "css-modules/semantic-token-resolves",
+            relativeFile,
+            declaration,
+            `Semantic color token ${reference.name} is not defined by the recorded color contract.`,
+          );
+        }
       });
     }
     css.walkDecls("composes", (declaration) => {
@@ -335,15 +554,40 @@ async function runContracts(root, profile, severity) {
   }
 
   const entryPath = resolveInside(root, profile.sharedApi.entryPoint);
-  const entryExports = (await exists(entryPath)) ? await exportedNames(entryPath) : new Set();
+  const entryAnalysis = await analyzeExportBindings(entryPath);
   for (const module of profile.sharedApi.modules) {
-    if (module.export && !entryExports.has(module.export)) {
-      add(
-        "css-modules/shared-entry-export",
-        profile.sharedApi.entryPoint,
-        null,
-        `Shared entry point must export ${module.export} for ${module.name}.`,
-      );
+    if (module.export) {
+      const state = entryAnalysis.bindings.get(module.export);
+      const expectedPath = path.resolve(resolveInside(root, module.path));
+      if (!state && entryAnalysis.complete) {
+        add(
+          "css-modules/shared-entry-export",
+          profile.sharedApi.entryPoint,
+          null,
+          `Shared entry point must export ${module.export} for ${module.name} at runtime.`,
+        );
+      } else if (!state || state.kind === "unknown") {
+        uncertain(
+          "css-modules/shared-entry-export",
+          profile.sharedApi.entryPoint,
+          `Could not prove runtime CSS-module provenance for export ${module.export} (${entryAnalysis.reason ?? state?.reason ?? "unsupported export syntax"}).`,
+        );
+      } else if (state.kind !== "css-module" || path.resolve(state.modulePath) !== expectedPath) {
+        const actual =
+          state.kind === "css-module"
+            ? path.relative(root, state.modulePath).split(path.sep).join("/")
+            : state.kind === "type-only"
+              ? "a type-only export"
+              : state.kind === "wrong"
+                ? state.description
+                : state.kind;
+        add(
+          "css-modules/shared-entry-export",
+          profile.sharedApi.entryPoint,
+          null,
+          `Shared export ${module.export} for ${module.name} resolves to ${actual}; expected runtime CSS module ${module.path}.`,
+        );
+      }
     }
     if (!module.publicClasses) continue;
     const modulePath = resolveInside(root, module.path);
@@ -371,7 +615,7 @@ async function runContracts(root, profile, severity) {
       }
     }
   }
-  return findings;
+  return { findings, uncertainties };
 }
 
 export async function checkProject({
@@ -380,19 +624,26 @@ export async function checkProject({
   severity,
 } = {}) {
   const resolvedRoot = path.resolve(root);
-  const profile = await readProfile(resolvedRoot, profilePath);
+  const contract = await readResolvedContract(resolvedRoot, profilePath);
+  const profile = contract.profile;
   const selectedSeverity = selectSeverity(profile, severity);
   const palette = await paletteTokens(resolvedRoot, profile);
+  const contractResult = await runContracts(resolvedRoot, profile, selectedSeverity);
   const rawFindings = [
     ...(await runEslint(resolvedRoot, profile, selectedSeverity)),
     ...(await runStylelint(resolvedRoot, profile, selectedSeverity, palette)),
-    ...(await runContracts(resolvedRoot, profile, selectedSeverity)),
+    ...contractResult.findings,
   ];
+  const finalized = finalizeFindings(
+    rawFindings,
+    profile.exceptions ?? [],
+    contractResult.uncertainties,
+  );
   return {
     root: resolvedRoot,
     profilePath,
     severity: selectedSeverity,
-    ...finalizeFindings(rawFindings, profile.exceptions ?? []),
+    ...finalized,
   };
 }
 
@@ -417,12 +668,38 @@ function runCommand(command, cwd) {
 }
 
 export async function runProfileCommands({ root, profilePath = ".agents/css-modules.json" }) {
-  const profile = await readProfile(root, profilePath);
-  for (const id of ["css:generate", "css:types"]) await runCommand(profile.commands[id], root);
+  const profile = (await readResolvedContract(root, profilePath)).profile;
+  const commands = [];
+  for (const id of ["css:generate", "css:types"]) {
+    const command = profile.commands[id];
+    if (!command) {
+      throw new Error(
+        `Resolved configuration has no ${id} command; add the package script or an explicit command override.`,
+      );
+    }
+    await runCommand(command, root);
+    commands.push({
+      id,
+      command,
+      status: "passed",
+      effect: id === "css:generate" ? "declared generated outputs" : "read-only typechecking",
+    });
+  }
+  return {
+    commands,
+    authoredEdits: [],
+    generatedOutputs: ["CSS Module declaration files and maps produced by css:generate"],
+  };
 }
 
 export function formatCheck(result) {
-  return formatFindingsReport(result, "CSS Modules source checks");
+  const report = formatFindingsReport(result, "CSS Modules source checks");
+  if (!result.execution) return report;
+  return `${report}\n\nExecution:\n${result.execution.commands
+    .map(({ id, command, effect }) => `  EXECUTED ${id}: ${command} (${effect})`)
+    .join(
+      "\n",
+    )}\n  Authored source/config edits: none\n  Generated outputs: permitted and reported above.`;
 }
 
 function parseArgs(argv) {
@@ -465,8 +742,9 @@ async function main() {
       process.stdout.write(`${usage()}\n`);
       return;
     }
-    if (options.runDeclarations) await runProfileCommands(options);
+    const execution = options.runDeclarations ? await runProfileCommands(options) : undefined;
     const result = await checkProject(options);
+    if (execution) result.execution = execution;
     process.stdout.write(
       options.format === "json"
         ? `${JSON.stringify(result, null, 2)}\n`

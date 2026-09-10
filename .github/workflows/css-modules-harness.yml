@@ -16,8 +16,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Audit, setup, reference, template, and evaluation fixtures
+      - name: Deterministic audit, setup, schema, migration, and rule tests
         run: npm run css:check
+      - name: Validate behavioral evaluation fixtures and offline grader controls
+        run: npm run css:eval:fixtures && npm run css:evaluate && npm run css:eval:grader && npm run css:eval:run
+      - name: Verify real generated-project scenarios
+        run: npm run css:fixture
       - name: Read-only audit check mode
         run: npm run css:audit-fixture
 
@@ -31,5 +35,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - name: Cascade, composition, theme, state, and accessibility fixtures
+      - name: Development and production cascade, composition, theme, state, and accessibility fixtures
         run: npm run css:browser
+      - name: Prepared behavioral development and production browser routes
+        run: npm run css:eval:run -- --browser

@@ -3,6 +3,8 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import { checkProject, exitCodeForCheck } from "../scripts/check.mjs";
 
@@ -444,6 +446,514 @@ test("judges descendant type selectors by the compound that owns them", async ()
       descendants.some(({ file }) => file === "src/nested-list.module.css"),
       "a bare type inside :is() is still a bare descendant type",
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("enforces presence-safe boolean expressions and verifies both rendered states", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      "src/presence-probe.tsx",
+      `export function Presence({ loading }: { loading: boolean }) {
+  return <>
+    <div data-loading={loading || undefined} />
+    <div data-loading={loading ? true : undefined} />
+    <div data-loading={!loading ? undefined : true} />
+    <div data-loading={true} />
+    <div data-loading={null} />
+    <div data-loading={undefined} />
+    <div data-loading={loading ?? undefined} />
+    <div data-loading={loading ? false : undefined} />
+    <div data-loading={false} />
+  </>;
+}
+
+export function ShadowedUndefined({ loading }: { loading: boolean }) {
+  return function shadowed(undefined: string) {
+    return <div data-loading={loading || undefined} />;
+  };
+}
+`,
+    );
+
+    const result = await checkProject({ root });
+    const presenceFindings = result.findings.filter(
+      ({ ruleId, file }) =>
+        ruleId === "css-modules/data-boolean-presence" && file === "src/presence-probe.tsx",
+    );
+
+    assert.equal(presenceFindings.length, 4);
+    assert.equal(
+      presenceFindings.filter(({ message }) => message.includes("data-loading")).length,
+      4,
+    );
+
+    const render = (loading, value) =>
+      renderToStaticMarkup(createElement("div", { "data-loading": value(loading) }));
+    assert.match(
+      render(true, (value) => value || undefined),
+      /data-loading/,
+    );
+    assert.doesNotMatch(
+      render(false, (value) => value || undefined),
+      /data-loading/,
+    );
+    assert.match(
+      render(true, (value) => (value ? true : undefined)),
+      /data-loading/,
+    );
+    assert.doesNotMatch(
+      render(false, (value) => (value ? true : undefined)),
+      /data-loading/,
+    );
+    assert.match(
+      render(true, (value) => (!value ? undefined : true)),
+      /data-loading/,
+    );
+    assert.doesNotMatch(
+      render(false, (value) => (!value ? undefined : true)),
+      /data-loading/,
+    );
+    assert.match(
+      render(false, (value) => value ?? undefined),
+      /data-loading="false"/,
+    );
+    assert.doesNotMatch(
+      render(false, (value) => (value ? false : undefined)),
+      /data-loading/,
+    );
+    assert.match(
+      render(true, (value) => (value ? false : undefined)),
+      /data-loading="false"/,
+    );
+    assert.match(
+      render(true, () => true),
+      /data-loading/,
+    );
+    assert.doesNotMatch(
+      render(true, () => null),
+      /data-loading/,
+    );
+    assert.doesNotMatch(
+      render(true, () => undefined),
+      /data-loading/,
+    );
+    assert.match(
+      render(true, () => false),
+      /data-loading="false"/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("checks complete layer ancestry and gives keyframes an at-rule diagnostic", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      "src/styles/atoms.module.css",
+      "@layer unexpected { @layer atoms { .stack { display: grid; } } }\n",
+    );
+    let result = await checkProject({ root });
+    const nestedLayer = result.findings.find(
+      ({ ruleId, file }) =>
+        ruleId === "css-modules/layer-by-profile" && file === "src/styles/atoms.module.css",
+    );
+    assert.equal(nestedLayer?.message, "Expected @layer atoms; found @layer unexpected.atoms.");
+
+    await write(
+      root,
+      "src/styles/atoms.module.css",
+      "@layer atoms { .stack { animation: spin 1s; } } @keyframes spin { to { opacity: 1; } }\n",
+    );
+    result = await checkProject({ root });
+    assert.deepEqual(
+      result.findings
+        .filter(({ file }) => file === "src/styles/atoms.module.css")
+        .map(({ ruleId }) => ruleId),
+      ["css-modules/keyframes-layer-by-profile"],
+    );
+
+    await write(
+      root,
+      "src/styles/atoms.module.css",
+      "@layer atoms { @layer foo { .stack { display: grid; } } }\n",
+    );
+    const dottedProfile = JSON.parse(
+      await readFile(path.join(root, ".agents/css-modules.json"), "utf8"),
+    );
+    dottedProfile.sharedApi.modules[0].layer = "atoms.foo";
+    dottedProfile.layers.ownership[0].layer = "atoms.foo";
+    dottedProfile.layers.order = ["base", "atoms.foo", "ui"];
+    await write(root, ".agents/css-modules.json", `${JSON.stringify(dottedProfile, null, 2)}\n`);
+    result = await checkProject({ root });
+    assert.deepEqual(
+      result.findings.filter(({ file }) => file === "src/styles/atoms.module.css"),
+      [],
+    );
+
+    await write(
+      root,
+      "src/styles/atoms.module.css",
+      "@layer atoms { @layer foo { .stack { animation: spin 1s; } @keyframes spin { to { opacity: 1; } } } }\n",
+    );
+    result = await checkProject({ root });
+    assert.deepEqual(
+      result.findings.filter(({ file }) => file === "src/styles/atoms.module.css"),
+      [],
+    );
+
+    await write(
+      root,
+      "src/styles/atoms.module.css",
+      "@layer { @layer atoms.foo { .stack { display: grid; } } }\n",
+    );
+    result = await checkProject({ root });
+    assert.equal(
+      result.findings.find(
+        ({ ruleId, file }) =>
+          ruleId === "css-modules/layer-by-profile" && file === "src/styles/atoms.module.css",
+      )?.message,
+      "Expected @layer atoms.foo; found @layer <anonymous>.atoms.foo.",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("recognizes raw colors only in bounded color-bearing value positions", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      "src/color-context.module.css",
+      `.root {
+  color: red;
+  background: linear-gradient(to right, red, #fff);
+  border: 1px solid rgb(0 0 0 / 50%);
+  box-shadow: 0 0 2px hsl(0 0% 0%);
+  outline: 1px solid tan;
+  color: var(--color-action-bg);
+  color: Canvas;
+  color: transparent;
+  color: currentColor;
+  animation-name: red;
+  grid-area: tan;
+  font-family: black;
+}
+`,
+    );
+
+    const result = await checkProject({ root });
+    const rawColors = result.findings.filter(
+      ({ ruleId, file }) =>
+        ruleId === "css-modules/no-raw-color-in-component" &&
+        file === "src/color-context.module.css",
+    );
+
+    assert.equal(rawColors.length, 6);
+    assert.ok(rawColors.every(({ message }) => !/Canvas|transparent|currentColor/.test(message)));
+    assert.ok(rawColors.every(({ line }) => line <= 7));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps non-color background and gradient variables out of semantic checks", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      "src/gradient-context.module.css",
+      `.root {
+  background: var(--background-position) center / var(--background-size) no-repeat;
+  background: center / cover no-repeat var(--missing-background-color);
+  background: radial-gradient(circle at var(--gradient-position), var(--missing-gradient-color));
+  background: conic-gradient(from var(--gradient-angle) at var(--conic-position), var(--missing-conic-color));
+  background: linear-gradient(var(--linear-gradient-angle), var(--missing-linear-angle-color));
+  background: linear-gradient(to right, var(--missing-linear-color) 20%);
+  background: linear-gradient(to right, red var(--gradient-stop-position), var(--missing-stop-color));
+}
+`,
+    );
+
+    const result = await checkProject({ root });
+    const missing = result.findings.filter(
+      ({ ruleId, file }) =>
+        ruleId === "css-modules/semantic-token-resolves" &&
+        file === "src/gradient-context.module.css",
+    );
+
+    assert.deepEqual(
+      missing.map(({ message }) => message.match(/--[\w-]+/)?.[0]),
+      [
+        "--missing-background-color",
+        "--missing-gradient-color",
+        "--missing-conic-color",
+        "--missing-linear-angle-color",
+        "--missing-linear-color",
+        "--missing-stop-color",
+      ],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("resolves semantic color references in longhands and shorthands with honest fallbacks", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      "src/styles/colors.css",
+      ":root { --color-action-bg: light-dark(var(--palette-blue-500), Canvas); --role-border: Canvas; }\n",
+    );
+    await write(
+      root,
+      "src/semantic-context.module.css",
+      `.root {
+  --_width: 1px;
+  color: var(--role-foreground);
+  background: var(--missing-background);
+  border: var(--_width) solid var(--role-border);
+  outline: var(--spacing-width) solid var(--role-border);
+  border-color: var(--missing-border);
+  box-shadow: 0 0 2px var(--missing-shadow);
+  color: var(--missing-with-fallback, Canvas);
+  padding: var(--spacing);
+}
+`,
+    );
+
+    const result = await checkProject({ root });
+    const missing = result.findings.filter(
+      ({ ruleId, file }) =>
+        ruleId === "css-modules/semantic-token-resolves" &&
+        file === "src/semantic-context.module.css",
+    );
+    assert.deepEqual(
+      missing.map(({ message }) => message.match(/--[\w-]+/)?.[0]),
+      ["--role-foreground", "--missing-background", "--missing-border", "--missing-shadow"],
+    );
+    assert.ok(!missing.some(({ message }) => message.includes("missing-with-fallback")));
+    assert.ok(!missing.some(({ message }) => message.includes("spacing-width")));
+    assert.ok(!missing.some(({ message }) => message.includes("spacing")));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("applies descendant ownership through native nesting and nested media", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      "src/nesting-context.module.css",
+      `.root h2, .root :is(h3, h4), .root :where(h5, h6) { color: var(--color-action-bg); }
+.root h2.title { color: var(--color-action-bg); }
+.root {
+  h2 { color: var(--color-action-bg); }
+  & h3 { color: var(--color-action-bg); }
+  & .title { color: var(--color-action-bg); }
+  @media (min-width: 1px) {
+    h4 { color: var(--color-action-bg); }
+  }
+}
+:global(.markdown) h2 { color: var(--color-action-bg); }
+:global(.markdown) { h2 { color: var(--color-action-bg); } }
+`,
+    );
+
+    const result = await checkProject({ root });
+    const descendants = result.findings.filter(
+      ({ ruleId, file }) =>
+        ruleId === "css-modules/no-descendant-type" && file === "src/nesting-context.module.css",
+    );
+    assert.equal(descendants.length, 8);
+    assert.ok(!descendants.some(({ message }) => message.includes("h2.title")));
+    assert.ok(!descendants.some(({ message }) => message.includes("markdown")));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("tracks imported helper and CSS bindings through aliases and public barrels", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(
+      root,
+      "src/bindings-context.tsx",
+      `import localStyles from "./button.module.css";
+import { cx as cls, cssVars as vars, atoms as atomStyles } from "#styles";
+import * as styleApi from "#styles";
+
+const bySize = { small: localStyles.root, large: localStyles.label } as const;
+
+export function Bound({ loading, size }: { loading: boolean; size: keyof typeof bySize }) {
+  return <div
+    data-loading={loading || undefined}
+    className={cls(
+      loading && localStyles.loading,
+      loading ? localStyles.root : localStyles.label,
+      { [localStyles.loading]: loading },
+      bySize[size],
+      atomStyles.stack,
+      styleApi.atoms.stack,
+    )}
+    style={vars({ "--_progress": loading ? 1 : 0 })}
+  />;
+}
+
+export function Unrelated({ loading }: { loading: boolean }) {
+  function cls(value: unknown) { return value; }
+  return <div className={cls(loading && localStyles.loading)} />;
+}
+`,
+    );
+
+    const result = await checkProject({ root });
+    const bindingFindings = result.findings.filter(
+      ({ ruleId, file }) =>
+        ["css-modules/no-boolean-state-class", "css-modules/custom-property-style-only"].includes(
+          ruleId,
+        ) && file === "src/bindings-context.tsx",
+    );
+    assert.equal(
+      bindingFindings.filter(({ ruleId }) => ruleId === "css-modules/no-boolean-state-class")
+        .length,
+      3,
+    );
+    assert.equal(
+      bindingFindings.filter(({ ruleId }) => ruleId === "css-modules/custom-property-style-only")
+        .length,
+      0,
+    );
+    assert.ok(
+      !result.findings.some(
+        ({ ruleId, file }) =>
+          ruleId === "css-modules/no-boolean-state-class" && file === "src/bindings-context.tsx",
+      ) || bindingFindings.length >= 3,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("requires shared exports to retain CSS-module runtime provenance", async () => {
+  const root = await createFixture();
+
+  try {
+    await write(root, "src/styles/other.module.css", "@layer atoms { .stack {} }\n");
+    await write(root, "src/styles/index.ts", "export const atoms = 123;\n");
+    let result = await checkProject({ root });
+    assert.ok(result.findings.some(({ ruleId }) => ruleId === "css-modules/shared-entry-export"));
+
+    await write(
+      root,
+      "src/styles/index.ts",
+      'export { default as atoms } from "./other.module.css";\n',
+    );
+    result = await checkProject({ root });
+    assert.ok(result.findings.some(({ ruleId }) => ruleId === "css-modules/shared-entry-export"));
+
+    await write(
+      root,
+      "src/styles/exports.ts",
+      'import atomsStyles from "./atoms.module.css";\nexport { atomsStyles as atoms };\n',
+    );
+    await write(root, "src/styles/index.ts", 'export * from "./exports";\n');
+    result = await checkProject({ root });
+    assert.ok(!result.findings.some(({ ruleId }) => ruleId === "css-modules/shared-entry-export"));
+
+    await write(root, "src/styles/index.ts", 'export { atoms } from "./exports";\n');
+    result = await checkProject({ root });
+    assert.ok(!result.findings.some(({ ruleId }) => ruleId === "css-modules/shared-entry-export"));
+
+    await write(
+      root,
+      "src/styles/first.ts",
+      'export { default as atoms } from "./atoms.module.css";\n',
+    );
+    await write(
+      root,
+      "src/styles/second.ts",
+      'export { default as atoms } from "./atoms.module.css";\n',
+    );
+    await write(
+      root,
+      "src/styles/index.ts",
+      'export * from "./first";\nexport * from "./second";\n',
+    );
+    result = await checkProject({ root });
+    assert.equal(result.status, "uncertain");
+    assert.ok(!result.findings.some(({ ruleId }) => ruleId === "css-modules/shared-entry-export"));
+    assert.ok(result.uncertainties.some(({ message }) => message.includes("provenance")));
+
+    await write(
+      root,
+      "src/styles/index.ts",
+      'export type { default as atoms } from "./atoms.module.css";\n',
+    );
+    result = await checkProject({ root });
+    assert.ok(result.findings.some(({ ruleId }) => ruleId === "css-modules/shared-entry-export"));
+
+    await write(root, "src/styles/index.ts", "export const atoms = runtimeAtoms;\n");
+    result = await checkProject({ root });
+    assert.equal(result.status, "uncertain");
+    assert.ok(!result.findings.some(({ ruleId }) => ruleId === "css-modules/shared-entry-export"));
+    assert.ok(
+      result.uncertainties.some(({ ruleId }) => ruleId === "css-modules/shared-entry-export"),
+    );
+
+    await write(
+      root,
+      "src/styles/index.ts",
+      'export * from "./exports";\nexport * from "./exports";\n',
+    );
+    result = await checkProject({ root });
+    assert.equal(result.status, "uncertain");
+    assert.ok(!result.findings.some(({ ruleId }) => ruleId === "css-modules/shared-entry-export"));
+    assert.ok(result.uncertainties.some(({ message }) => message.includes("provenance")));
+
+    await write(root, "src/styles/index.ts", 'export * as atoms from "./atoms.module.css";\n');
+    result = await checkProject({ root });
+    assert.equal(result.status, "uncertain");
+    assert.ok(!result.findings.some(({ ruleId }) => ruleId === "css-modules/shared-entry-export"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("retains export uncertainty when ordinary warnings are also present", async () => {
+  const root = await createFixture({
+    overrides: { enforcement: { severity: "warning", privateBooleanAttributes: ["data-loading"] } },
+  });
+
+  try {
+    await write(root, "src/styles/index.ts", "export const atoms = runtimeAtoms;\n");
+    await write(root, "src/warning.module.css", "@layer atoms { .warning { color: red; } }\n");
+
+    const result = await checkProject({ root });
+
+    assert.equal(result.status, "warnings");
+    assert.ok(
+      result.findings.some(({ ruleId }) => ruleId === "css-modules/no-raw-color-in-component"),
+    );
+    assert.ok(
+      result.uncertainties.some(({ ruleId }) => ruleId === "css-modules/shared-entry-export"),
+    );
+    assert.equal(exitCodeForCheck(result), 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

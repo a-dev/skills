@@ -1,38 +1,21 @@
 #!/usr/bin/env node
 
-import { cp, mkdtemp, rm, symlink } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { rmSync } from "node:fs";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 
-import { createServer } from "vite";
+import { startReferenceServer } from "../browser-tests/reference-server.mjs";
 
-const scriptRoot = path.dirname(fileURLToPath(import.meta.url));
-const skillRoot = path.dirname(scriptRoot);
-const repositoryRoot = path.resolve(skillRoot, "../../..");
-const sourceFixture = path.join(skillRoot, "fixtures", "vite-react");
-const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "css-modules-browser-"));
-const fixture = path.join(temporaryRoot, "fixture");
+const running = await startReferenceServer({ port: 4173 });
 
-await cp(sourceFixture, fixture, { recursive: true });
-await symlink(path.join(repositoryRoot, "node_modules"), path.join(fixture, "node_modules"), "dir");
-
-// The copied fixture's own vite.config.ts is the single source of the adapter
-// configuration; duplicating it inline here previously risked silent drift.
-const server = await createServer({
-  root: fixture,
-  configFile: path.join(fixture, "vite.config.ts"),
-  configLoader: "runner",
-  logLevel: "error",
-  server: { host: "127.0.0.1", port: 4173, strictPort: true },
+process.on("exit", () => {
+  rmSync(running.temporaryRoot, { recursive: true, force: true });
 });
 
-await server.listen();
-
 async function close() {
-  await server.close();
-  await rm(temporaryRoot, { recursive: true, force: true });
+  // Remove the disposable copy before awaiting Vite shutdown. Playwright may
+  // terminate the web-server process shortly after the signal arrives.
+  rmSync(running.temporaryRoot, { recursive: true, force: true });
+  await running.close();
   process.exit(0);
 }
 
