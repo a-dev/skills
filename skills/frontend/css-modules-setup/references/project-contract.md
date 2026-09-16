@@ -106,11 +106,11 @@ Color templates apply only when `colorTokens.enabled` is true. Palette values re
 
 When enforcement is enabled, `sharedApi.modules[].export` is a runtime CSS-module contract, not just a name in a barrel. The bundled checker follows direct default CSS-module re-exports, local imported bindings, and relative `export *` barrels. A proven wrong value, wrong module, or type-only export is a violation. External imports, namespace values, cycles, and unresolved expressions are reported as analysis uncertainty; no finding is treated as proof in those cases.
 
-The TSX rules run on one lint engine, resolved as the explicit compact `lintEngine`, otherwise the linter the project already runs (Oxlint or ESLint config files and package scripts, then dependencies), otherwise ESLint. An Oxlint project gets `oxlint` and `oxc-parser` and no ESLint or Babel packages; an ESLint project gets `eslint`, `@babel/eslint-parser`, and `@babel/core`. Stylelint and the cross-file checks run with either engine.
+The TSX rules use the compact profile's `lintEngine` when set. Otherwise, setup checks the project's lint config files and package scripts, then its dependencies. It selects ESLint when both engines appear or neither does. For Oxlint, setup installs `oxlint` and `oxc-parser`. For ESLint, it installs `eslint`, `@babel/eslint-parser`, and `@babel/core`. Both engines use Stylelint and the cross-file checks.
 
 ## Profile validation
 
-Both schemas live only in `.agents/css-modules-harness/assets/`, which setup installs for every profile, including `checks: "off"`. Nothing is copied beside the profile. The profile's `$schema` points at `./css-modules-harness/assets/css-modules.compact.schema.json` (or `css-modules.schema.json` for legacy profiles) so editors can resolve it. That file is editor metadata only: validation always uses the schema bundled with the harness scripts, so editing the copy cannot change what the audit or checker accepts.
+Setup installs both schemas in `.agents/css-modules-harness/assets/`, including when `checks` is `"off"`. The profile's `$schema` points at `./css-modules-harness/assets/css-modules.compact.schema.json` for compact profiles or `./css-modules-harness/assets/css-modules.schema.json` for legacy profiles. Editors use this reference. The audit and checker ignore it and load the schemas bundled with their own scripts.
 
 The audit validates required shape without executing application code. Behavioral verification remains a separate explicit action.
 

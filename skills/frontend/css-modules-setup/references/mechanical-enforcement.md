@@ -22,7 +22,7 @@ It never invokes `commands["css:check"]` recursively. It does not add generic ap
 
 ## Lint engine
 
-The TSX rules run on one lint engine, resolved as the explicit compact `lintEngine`, otherwise the linter the project already runs (Oxlint or ESLint config files and package scripts, then dependencies), otherwise ESLint. An Oxlint project gets `oxlint` and `oxc-parser` and no ESLint or Babel packages; an ESLint project gets `eslint`, `@babel/eslint-parser`, and `@babel/core`. Stylelint and the cross-file checks run with either engine.
+The TSX rules use the compact profile's `lintEngine` when set. Otherwise, setup checks the project's lint config files and package scripts, then its dependencies. It selects ESLint when both engines appear or neither does. For Oxlint, setup installs `oxlint` and `oxc-parser`. For ESLint, it installs `eslint`, `@babel/eslint-parser`, and `@babel/core`. Both engines use Stylelint and the cross-file checks.
 
 `check.mjs` loads ESLint and its Babel parser only for the ESLint engine. With Oxlint it runs the rules through `check-oxlint.mjs` and uses `oxc-parser` for the shared-export analysis, so an Oxlint project never needs ESLint installed. A project that runs both linters stays on ESLint unless the profile sets `lintEngine`.
 

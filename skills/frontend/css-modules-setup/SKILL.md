@@ -149,7 +149,7 @@ Rules:
 - stop on incompatible drift unless `migrate` was explicitly selected;
 - report each touched file immediately if a later phase fails.
 
-When the selected profile enables `enforcement`, read `references/mechanical-enforcement.md`. The TSX rules run on one lint engine, resolved as the explicit compact `lintEngine`, otherwise the linter the project already runs (Oxlint or ESLint config files and package scripts, then dependencies), otherwise ESLint. An Oxlint project gets `oxlint` and `oxc-parser` and no ESLint or Babel packages; an ESLint project gets `eslint`, `@babel/eslint-parser`, and `@babel/core`. Stylelint and the cross-file checks run with either engine.
+When the selected profile enables `enforcement`, read `references/mechanical-enforcement.md`. The TSX rules use the compact profile's `lintEngine` when set. Otherwise, setup checks the project's lint config files and package scripts, then its dependencies. It selects ESLint when both engines appear or neither does. For Oxlint, setup installs `oxlint` and `oxc-parser`. For ESLint, it installs `eslint`, `@babel/eslint-parser`, and `@babel/core`. Both engines use Stylelint and the cross-file checks.
 
 Use the files under `assets/templates/` as parameterized source material through `scripts/setup.mjs`. In `bootstrap`, pass the developer-reviewed values with `--inputs <json-path>`. An unresolved required input returns `needs-input`; it never becomes an empty class or invented visual value.
 
@@ -159,7 +159,9 @@ Complete when every planned change is applied, every unplanned conflict stops th
 
 ## Step 5: write the project contract
 
-Use the setup planner to create `.agents/css-modules.json` from the reviewed input. The planner copies both schemas into `.agents/css-modules-harness/assets/`, even when `checks` is `off`, and points the profile's `$schema` there: `css-modules.compact.schema.json` for compact profiles, `css-modules.schema.json` for legacy ones. Nothing is copied beside the profile. The schema files are for editors only; validation always uses the schemas bundled with the harness scripts. Earlier setups wrote `.agents/css-modules.schema.json` or `.agents/css-modules.compact.schema.json` and pointed `$schema` at them. `align` reports those leftovers as conflicts, and `migrate` deletes a copy whose `$id` matches the bundled schema and repoints `$schema`. A file at either path with another `$id` stays a conflict.
+Use the setup planner to create `.agents/css-modules.json` from the reviewed input. It installs both schemas in `.agents/css-modules-harness/assets/`, even when `checks` is `off`. The profile's `$schema` points at `css-modules.compact.schema.json` for compact profiles or `css-modules.schema.json` for legacy profiles in that folder. Validation reads the schemas bundled with the running scripts, regardless of the profile's `$schema` value.
+
+Earlier setups placed schemas beside the profile. `align` reports those copies as conflicts. `migrate` deletes a copy if its `$id` matches the bundled schema and updates the old `$schema` reference. A different `$id` remains a conflict.
 
 The authored profile records decisions the daily skill cannot safely rediscover. All consumers use the same resolved in-memory profile. Executable configuration remains authoritative. Do not edit show-config output.
 
@@ -252,7 +254,7 @@ node <css-modules-setup-skill>/scripts/setup.mjs migrate \
   --format human --apply
 ```
 
-The planner compares legacy and compact resolved profiles before writing. It preserves topology, helper and barrel paths, module exports/classes, all color files and `modeMapping`, command overrides, documents, exceptions, and composition policy. A lossy field produces a field-specific blocker and no writes. The same migration deletes any schema copy beside the profile (`.agents/css-modules.schema.json` or `.agents/css-modules.compact.schema.json`) and, after a switch from Oxlint to ESLint, the unused Oxlint adapter files; each deletion is shown in the plan and refused if the file changed after planning. `audit`, `align`, daily checks, and `show-config` never migrate.
+The planner compares legacy and compact resolved profiles before writing. It preserves topology, helper and barrel paths, module exports/classes, all color files and `modeMapping`, command overrides, documents, exceptions, and composition policy. A lossy field produces a field-specific blocker and no writes. The migration also removes recognized schema copies beside the profile and unused Oxlint adapter files after a switch to ESLint. The plan lists each deletion. Applying it fails if a file has changed since planning. `audit`, `align`, daily checks, and `show-config` never migrate.
 
 Read `references/resolved-contract.md` for the complete field map, provenance labels, exact-one-owner rule, and static evidence limits. Read `adapters/vite-react.md` for the narrow integration steps required to make aliases, declaration generation, and production builds executable.
 

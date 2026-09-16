@@ -25,7 +25,7 @@ npx skills add a-dev/skills --list
 
 ### Frontend CSS Modules
 
-An applied `css-modules-setup` plan creates a project profile and a harness folder that holds the schemas:
+`css-modules-setup` creates a project profile and installs its schemas in the harness folder when you apply the plan:
 
 ```text
 .agents/
@@ -38,9 +38,9 @@ An applied `css-modules-setup` plan creates a project profile and a harness fold
 
 `css-modules.json` records your project decisions in the compact `css-modules-compact` format or the supported legacy format. Edit this file; the skills and harness read it.
 
-`css-modules.compact.schema.json` or `css-modules.schema.json` defines the valid profile structure for editor validation and autocomplete. Setup installs both in the harness `assets/` folder, even with checks off, and the profile's `$schema` points there, so it works offline across agent hosts and installation methods. The harness always validates with its bundled schema, so editing that copy does not change validation. `show-config` displays the resolved contract as read-only output.
+The schemas define the profile structure for editor validation and autocomplete. Setup installs both in `css-modules-harness/assets/`, even with checks off, and points the profile's `$schema` at the matching file. Editors can read these files offline. The audit and checker read the schemas bundled with their own scripts, regardless of the profile's `$schema` value. `show-config` displays the resolved contract without writing it.
 
-`audit` and `verify` write neither file. Both are read-only.
+`audit` and `verify` do not write the profile or schemas.
 
 [`adapters/hosts.md`](skills/frontend/css-modules-setup/adapters/hosts.md) lists where each host keeps its skills, for the [`skills` CLI](https://github.com/vercel-labs/skills). It also covers catalog verification, the shadow-copy rules, and the discovery check that rejects a copy once it drifts or shadows another install.
 
