@@ -20,7 +20,7 @@ If an explicit choice disagrees with a discovered executable fact, the resolver 
 
 | Legacy field | Resolved equivalent | Compact authoring | Migration limit |
 | --- | --- | --- | --- |
-| `$schema` | schema metadata only | `$schema` pointing to `css-modules.compact.schema.json` | never compared as behavior |
+| `$schema` | schema metadata only | `$schema` pointing to `./css-modules-harness/assets/css-modules.compact.schema.json` | never compared as behavior |
 | `methodologyVersion` | `profile.methodologyVersion` | pinned by `preset` | unsupported methodology is rejected |
 | `profileSchemaVersion` | legacy schema compatibility | `version` | only supported schema versions migrate |
 | `adapter.name`, `adapter.version` | resolved adapter metadata | pinned by `preset` | a non-preset adapter is field-specific unsupported |
@@ -66,6 +66,6 @@ The default compact preset has `reset, base, atoms, ui` order, an atoms glob und
 
 ## Migration and evidence limits
 
-Legacy-to-compact conversion is explicit: `setup.mjs migrate --authorize-migrate --to compact`. The planner constructs a candidate, resolves both sides, and compares the resolved profiles before any write. A difference becomes a field-specific unsupported diagnostic; no lossy candidate is applied. Custom topology, helper names, entry point, all color files and `modeMapping`, command overrides, documents, exceptions, and frozen classes are preserved. The unused legacy schema copy beside the profile is deleted in the same plan. A second run is `already-compact` with no changes. Audit, align, daily checks, and show-config never migrate implicitly.
+Legacy-to-compact conversion is explicit: `setup.mjs migrate --authorize-migrate --to compact`. The planner constructs a candidate, resolves both sides, and compares the resolved profiles before any write. A difference becomes a field-specific unsupported diagnostic; no lossy candidate is applied. Custom topology, helper names, entry point, all color files and `modeMapping`, command overrides, documents, exceptions, and frozen classes are preserved. The candidate points `$schema` into the harness assets, and any old schema copy beside the profile is deleted in the same plan. A second run is `already-compact` with no changes. Audit, align, daily checks, and show-config never migrate implicitly.
 
 The resolved profile is an in-memory result. Generated declarations and maps remain verification effects, distinct from authored source/config edits. Static audit limits—alias resolution, dynamic Vite configuration, type freshness, and runtime behavior—remain `not-verifiable` evidence with follow-up commands; they are not converted into proof by normalization.

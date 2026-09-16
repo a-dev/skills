@@ -9,7 +9,6 @@ import { escapeRegExp, exists, readJson, resolveInside, walk } from "./lib.mjs";
 import {
   discoverProjectFacts,
   isCompactInput,
-  readInputSchema,
   resolveContract,
   resolveLayerOwner,
   validateInput,
@@ -839,7 +838,6 @@ export async function auditProject({
   }
 
   const profileErrors = validateInput(profile, {
-    schema: await readInputSchema(resolvedRoot, profilePath, profile),
     // Version compatibility is reported as its own finding below. Keeping
     // that dispatch separate prevents an unsupported schema from hiding the
     // actionable version drift behind a generic shape error.

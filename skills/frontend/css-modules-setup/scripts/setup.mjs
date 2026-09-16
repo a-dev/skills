@@ -8,12 +8,12 @@ import postcss from "postcss";
 
 import { auditProject } from "./audit.mjs";
 import {
-  compactSchema,
+  COMPACT_SCHEMA_REF,
+  LEGACY_SCHEMA_REF,
   discoverProjectFacts,
   formatResolvedContract,
   isCompactInput,
   planLegacyToCompact,
-  readInputSchema,
   resolveContract,
   readResolvedContract,
   validateInput,
@@ -54,7 +54,14 @@ const BASE_HARNESS_FILES = ["eslint-plugin.mjs", "stylelint-plugin.mjs"];
 const OXLINT_SCRIPT_FILES = ["check-oxlint.mjs"];
 const OXLINT_HARNESS_FILES = ["oxlint-plugin.mjs"];
 const HARNESS_ROOT_PATH = ".agents/css-modules-harness";
-const LEGACY_SCHEMA_PATH = ".agents/css-modules.schema.json";
+// Earlier setups copied the matching schema beside the profile and pointed
+// $schema at it. The harness assets now carry both schemas, so these copies are
+// obsolete. The bundled $id (equal to that old $schema value) marks a copy as
+// skill-owned, which migrate may delete.
+const PROFILE_SCHEMA_COPIES = [
+  { path: ".agents/css-modules.schema.json", id: "./css-modules.schema.json" },
+  { path: ".agents/css-modules.compact.schema.json", id: "./css-modules.compact.schema.json" },
+];
 const BASE_ENFORCEMENT_DEPENDENCIES = [
   "color-name",
   "postcss",
@@ -250,14 +257,32 @@ async function readTemplate(name) {
   return readFile(path.join(TEMPLATE_ROOT, name), "utf8");
 }
 
-async function bundledCheckerFiles({ lintEngine = "eslint" } = {}) {
+// The harness assets and version contract install with every profile, even
+// with checks off: the profile's $schema points into assets/ for editors.
+async function harnessAssetFiles() {
   const files = [
     {
-      path: ".agents/css-modules-harness/versions.json",
+      path: `${HARNESS_ROOT_PATH}/versions.json`,
       source: "versions.json",
       content: await readFile(path.join(SKILL_ROOT, "versions.json"), "utf8"),
     },
   ];
+  for (const name of [
+    "css-modules.compact.schema.json",
+    "css-modules.presets.json",
+    "css-modules.schema.json",
+  ]) {
+    files.push({
+      path: `${HARNESS_ROOT_PATH}/assets/${name}`,
+      source: `assets/${name}`,
+      content: await readFile(path.join(ASSET_ROOT, name), "utf8"),
+    });
+  }
+  return files;
+}
+
+async function bundledCheckerFiles({ lintEngine = "eslint" } = {}) {
+  const files = [];
   const scriptFiles = [
     ...SCRIPT_ROOT_FILES,
     ...(lintEngine === "oxlint" ? OXLINT_SCRIPT_FILES : []),
@@ -280,28 +305,18 @@ async function bundledCheckerFiles({ lintEngine = "eslint" } = {}) {
       content: await readFile(path.join(HARNESS_ROOT, name), "utf8"),
     });
   }
-  // lib.mjs validates against the canonical schema from ../assets, so the
-  // harness no longer depends on a legacy schema copy beside the profile.
-  for (const name of [
-    "css-modules.compact.schema.json",
-    "css-modules.presets.json",
-    "css-modules.schema.json",
-  ]) {
-    files.push({
-      path: `.agents/css-modules-harness/assets/${name}`,
-      source: `assets/${name}`,
-      content: await readFile(path.join(ASSET_ROOT, name), "utf8"),
-    });
-  }
   return files;
 }
 
-// Skill-owned files that the selected configuration no longer uses: the legacy
-// schema copy once the profile is compact, and Oxlint adapter files once the
-// project uses ESLint. Only migrate removes them.
-async function obsoleteFiles(root, { compact, enforcement, lintEngine }) {
-  const candidates = [];
-  if (compact) candidates.push({ path: LEGACY_SCHEMA_PATH, kind: "legacy-schema" });
+// Skill-owned files that the selected configuration no longer uses: schema
+// copies beside the profile, and Oxlint adapter files once the project uses
+// ESLint. Only migrate removes them.
+async function obsoleteFiles(root, { enforcement, lintEngine }) {
+  const candidates = PROFILE_SCHEMA_COPIES.map(({ path: copyPath, id }) => ({
+    path: copyPath,
+    kind: "schema-copy",
+    id,
+  }));
   if (enforcement && lintEngine !== "oxlint") {
     candidates.push(
       ...OXLINT_SCRIPT_FILES.map((name) => ({
@@ -322,12 +337,22 @@ async function obsoleteFiles(root, { compact, enforcement, lintEngine }) {
   return found;
 }
 
-function isLegacySchemaCopy(content) {
+function isBundledSchemaCopy(content, id) {
   try {
-    return JSON.parse(content).$id === "./css-modules.schema.json";
+    return JSON.parse(content).$id === id;
   } catch {
     return false;
   }
+}
+
+// Rewrite a $schema that an earlier setup pointed at a copy beside the profile.
+// Any other value is the project's choice and stays as authored.
+function schemaRefFor(profile, { force = false } = {}) {
+  const ref = isCompactInput(profile) ? COMPACT_SCHEMA_REF : LEGACY_SCHEMA_REF;
+  if (force || PROFILE_SCHEMA_COPIES.some(({ id }) => id === profile.$schema)) {
+    return { ...profile, $schema: ref };
+  }
+  return profile;
 }
 
 function render(template, variables, templateName) {
@@ -675,7 +700,7 @@ async function classifyDesiredFiles(
   }));
   if (conflicts.length > 0) return { changes, conflicts };
 
-  for (const desired of [...desiredFiles].sort((left, right) =>
+  for (const { migrateOnly, ...desired } of [...desiredFiles].sort((left, right) =>
     left.path.localeCompare(right.path),
   )) {
     const target = resolveInside(root, desired.path);
@@ -688,6 +713,12 @@ async function classifyDesiredFiles(
     if (current !== desired.content) {
       if (allowReplace) {
         changes.push({ action: "replace", ...desired, before: current });
+      } else if (migrateOnly) {
+        conflicts.push({
+          path: desired.path,
+          reason: migrateOnly,
+          sources: [desired.source ?? desired.path],
+        });
       } else {
         conflicts.push({
           path: desired.path,
@@ -699,10 +730,11 @@ async function classifyDesiredFiles(
   }
 
   for (const stale of obsolete) {
-    if (stale.kind === "legacy-schema" && !isLegacySchemaCopy(stale.before)) {
+    if (stale.kind === "schema-copy" && !isBundledSchemaCopy(stale.before, stale.id)) {
       conflicts.push({
         path: stale.path,
-        reason: "compact profile leaves this file unused, but it is not the bundled legacy schema",
+        reason:
+          "schemas now live only in the harness assets, but this file is not a bundled schema copy",
         sources: [stale.path],
       });
     } else if (allowReplace) {
@@ -791,14 +823,7 @@ export async function planSetup({
   }
 
   const profileInput = await readJson(selectedProfilePath);
-  const profileErrors = validateInput(profileInput, {
-    schema: await readInputSchema(
-      resolvedRoot,
-      profileSource ?? ".agents/css-modules.json",
-      profileInput,
-    ),
-    ignoreVersion: true,
-  });
+  const profileErrors = validateInput(profileInput, { ignoreVersion: true });
   if (profileErrors.length > 0) {
     const invalidFinding = {
       id: "selected-profile.schema",
@@ -885,42 +910,27 @@ export async function planSetup({
     return plan;
   }
 
-  const schema = await readFile(path.join(ASSET_ROOT, "css-modules.schema.json"), "utf8");
-  const compactSchemaText = `${JSON.stringify(compactSchema(), null, 2)}\n`;
   const targetProfilePath = path.join(resolvedRoot, ".agents", "css-modules.json");
   const readsTargetProfile = path.resolve(selectedProfilePath) === targetProfilePath;
   const storedProfile =
-    migration?.candidate ??
-    (readsTargetProfile
-      ? profileInput
-      : {
-          ...profileInput,
-          $schema: isCompactInput(profileInput)
-            ? "./css-modules.compact.schema.json"
-            : "./css-modules.schema.json",
-        });
+    migration?.candidate ?? schemaRefFor(profileInput, { force: !readsTargetProfile });
   const storedContract = migration?.after ?? selectedContract;
   const storedResolvedProfile = storedContract.profile;
   const lintEngine = storedResolvedProfile.lintEngine ?? "eslint";
   const desiredFiles = [];
-  if (!isCompactInput(storedProfile)) {
-    desiredFiles.push({
-      path: LEGACY_SCHEMA_PATH,
-      source: "assets/css-modules.schema.json",
-      content: schema,
-    });
-  } else {
-    desiredFiles.push({
-      path: ".agents/css-modules.compact.schema.json",
-      source: "assets/css-modules.compact.schema.json",
-      content: compactSchemaText,
-    });
-  }
   if (migration || !readsTargetProfile || !(await exists(targetProfilePath))) {
     desiredFiles.push({
       path: ".agents/css-modules.json",
       source: selectedProfilePath,
       content: `${JSON.stringify(storedProfile, null, 2)}\n`,
+    });
+  } else if (storedProfile !== profileInput) {
+    desiredFiles.push({
+      path: ".agents/css-modules.json",
+      source: selectedProfilePath,
+      content: `${JSON.stringify(storedProfile, null, 2)}\n`,
+      migrateOnly:
+        "$schema points at a schema copy beside the profile; run migrate --authorize-migrate to point it at the harness assets",
     });
   }
 
@@ -977,12 +987,12 @@ export async function planSetup({
     desiredFiles.push(...rendered.files);
   }
 
+  desiredFiles.push(...(await harnessAssetFiles()));
   if (storedResolvedProfile.enforcement) {
     desiredFiles.push(...(await bundledCheckerFiles({ lintEngine })));
   }
 
   const obsolete = await obsoleteFiles(resolvedRoot, {
-    compact: isCompactInput(storedProfile),
     enforcement: Boolean(storedResolvedProfile.enforcement),
     lintEngine,
   });

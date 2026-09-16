@@ -14,7 +14,7 @@ Use the compact, versioned format for new profiles:
 
 ```json
 {
-  "$schema": "./css-modules.compact.schema.json",
+  "$schema": "./css-modules-harness/assets/css-modules.compact.schema.json",
   "format": "css-modules-compact",
   "version": 1,
   "preset": "vite-react@1",
@@ -159,7 +159,7 @@ Complete when every planned change is applied, every unplanned conflict stops th
 
 ## Step 5: write the project contract
 
-Use the setup planner to copy the selected schema beside `.agents/css-modules.json` and create that authored file from the reviewed input. Compact profiles receive `css-modules.compact.schema.json`; legacy profiles receive `css-modules.schema.json`. A compact project does not keep the legacy schema copy: `align` reports a leftover one as a conflict, and `migrate` deletes it.
+Use the setup planner to create `.agents/css-modules.json` from the reviewed input. The planner copies both schemas into `.agents/css-modules-harness/assets/`, even when `checks` is `off`, and points the profile's `$schema` there: `css-modules.compact.schema.json` for compact profiles, `css-modules.schema.json` for legacy ones. Nothing is copied beside the profile. The schema files are for editors only; validation always uses the schemas bundled with the harness scripts. Earlier setups wrote `.agents/css-modules.schema.json` or `.agents/css-modules.compact.schema.json` and pointed `$schema` at them. `align` reports those leftovers as conflicts, and `migrate` deletes a copy whose `$id` matches the bundled schema and repoints `$schema`. A file at either path with another `$id` stays a conflict.
 
 The authored profile records decisions the daily skill cannot safely rediscover. All consumers use the same resolved in-memory profile. Executable configuration remains authoritative. Do not edit show-config output.
 
@@ -252,7 +252,7 @@ node <css-modules-setup-skill>/scripts/setup.mjs migrate \
   --format human --apply
 ```
 
-The planner compares legacy and compact resolved profiles before writing. It preserves topology, helper and barrel paths, module exports/classes, all color files and `modeMapping`, command overrides, documents, exceptions, and composition policy. A lossy field produces a field-specific blocker and no writes. The same migration deletes the now-unused `.agents/css-modules.schema.json`, and, after a switch from Oxlint to ESLint, the unused Oxlint adapter files; each deletion is shown in the plan and refused if the file changed after planning. `audit`, `align`, daily checks, and `show-config` never migrate.
+The planner compares legacy and compact resolved profiles before writing. It preserves topology, helper and barrel paths, module exports/classes, all color files and `modeMapping`, command overrides, documents, exceptions, and composition policy. A lossy field produces a field-specific blocker and no writes. The same migration deletes any schema copy beside the profile (`.agents/css-modules.schema.json` or `.agents/css-modules.compact.schema.json`) and, after a switch from Oxlint to ESLint, the unused Oxlint adapter files; each deletion is shown in the plan and refused if the file changed after planning. `audit`, `align`, daily checks, and `show-config` never migrate.
 
 Read `references/resolved-contract.md` for the complete field map, provenance labels, exact-one-owner rule, and static evidence limits. Read `adapters/vite-react.md` for the narrow integration steps required to make aliases, declaration generation, and production builds executable.
 

@@ -18,19 +18,14 @@ export const SKIPPED_DIRECTORIES = new Set([
 const LIB_ROOT = path.dirname(fileURLToPath(import.meta.url));
 
 async function loadProfileSchema() {
-  const candidates = [
-    path.join(LIB_ROOT, "../assets/css-modules.schema.json"),
-    path.join(LIB_ROOT, "../../css-modules.schema.json"),
-  ];
-  for (const candidate of candidates) {
-    try {
-      return JSON.parse(await readFile(candidate, "utf8"));
-    } catch {
-      // The installed harness keeps the copied schema beside .agents/, while
-      // the source harness reads the canonical asset from ../assets.
-    }
+  // Both the skill source and the installed harness keep the canonical schema
+  // in ../assets; a copy beside the profile is never consulted.
+  const schemaPath = path.join(LIB_ROOT, "../assets/css-modules.schema.json");
+  try {
+    return JSON.parse(await readFile(schemaPath, "utf8"));
+  } catch {
+    throw new Error(`Unable to locate the canonical css-modules.schema.json at ${schemaPath}`);
   }
-  throw new Error("Unable to locate the canonical css-modules.schema.json");
 }
 
 const DEFAULT_PROFILE_SCHEMA = await loadProfileSchema();
@@ -387,24 +382,13 @@ export function validateProfile(
   return errors;
 }
 
-export async function readProfileSchema(root, profilePath) {
-  const profileFile = resolveInside(root, profilePath);
-  const besideProfile = path.join(path.dirname(profileFile), "css-modules.schema.json");
-  try {
-    return JSON.parse(await readFile(besideProfile, "utf8"));
-  } catch {
-    return DEFAULT_PROFILE_SCHEMA;
-  }
-}
-
 export async function readProfile(root, profilePath) {
   const profile = await readJson(resolveInside(root, profilePath));
   if (profile?.format === "css-modules-compact") {
     const { readResolvedContract } = await import("./contract.mjs");
     return (await readResolvedContract(root, profilePath)).profile;
   }
-  const schema = await readProfileSchema(root, profilePath);
-  const errors = validateProfile(profile, { schema });
+  const errors = validateProfile(profile);
   if (errors.length > 0) throw new Error(`Invalid CSS Modules profile: ${errors.join("; ")}`);
   return profile;
 }

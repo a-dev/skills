@@ -14,6 +14,10 @@ import { exists, matchesGlob, readJson, resolveInside, validateProfile, walk } f
 export const COMPACT_FORMAT = "css-modules-compact";
 export const COMPACT_SCHEMA_VERSION = 1;
 export const LEGACY_FORMAT = "legacy";
+// A profile's $schema is editor metadata. It points at the copy shipped in the
+// installed harness; validation always uses the schemas bundled with this module.
+export const COMPACT_SCHEMA_REF = "./css-modules-harness/assets/css-modules.compact.schema.json";
+export const LEGACY_SCHEMA_REF = "./css-modules-harness/assets/css-modules.schema.json";
 export const COMMAND_KEYS = ["css:generate", "css:types", "css:check", "css:verify"];
 
 const MODULE_ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -59,10 +63,6 @@ function sourceFormat(input) {
 
 export function isCompactInput(input) {
   return sourceFormat(input) === "compact";
-}
-
-export function compactSchema() {
-  return clone(COMPACT_SCHEMA);
 }
 
 function compactSemanticErrors(input) {
@@ -115,19 +115,6 @@ export function validateInput(input, { schema, ignoreVersion = false } = {}) {
     return [...errors, ...compactSemanticErrors(input)];
   }
   return validateProfile(input, { schema, ignoreVersion });
-}
-
-export async function readInputSchema(root, profilePath, input) {
-  const profileFile = resolveInside(root, profilePath);
-  const fileName = isCompactInput(input)
-    ? "css-modules.compact.schema.json"
-    : "css-modules.schema.json";
-  const besideProfile = path.join(path.dirname(profileFile), fileName);
-  try {
-    return JSON.parse(await readFile(besideProfile, "utf8"));
-  } catch {
-    return isCompactInput(input) ? COMPACT_SCHEMA : undefined;
-  }
 }
 
 function presetFor(input) {
@@ -634,8 +621,7 @@ export async function readResolvedContract(
 ) {
   const resolvedRoot = path.resolve(root);
   const input = await readJson(resolveInside(resolvedRoot, profilePath));
-  const schema = await readInputSchema(resolvedRoot, profilePath, input);
-  const errors = validateInput(input, { schema });
+  const errors = validateInput(input);
   if (errors.length) throw new Error(`Invalid CSS Modules configuration: ${errors.join("; ")}`);
   const discoveredFacts = options.discoveredFacts ?? (await discoverProjectFacts(resolvedRoot));
   const contract = resolveContract(input, { discoveredFacts });
@@ -679,7 +665,7 @@ export function compactFromLegacy(legacy, { preset = "vite-react@1" } = {}) {
     localModules: presetData.layers.localModules,
   };
   const candidate = {
-    $schema: "./css-modules.compact.schema.json",
+    $schema: COMPACT_SCHEMA_REF,
     format: COMPACT_FORMAT,
     version: COMPACT_SCHEMA_VERSION,
     preset,

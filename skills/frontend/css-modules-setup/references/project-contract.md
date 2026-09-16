@@ -110,7 +110,7 @@ The TSX rules run on one lint engine, resolved as the explicit compact `lintEngi
 
 ## Profile validation
 
-Copy the schema for the profile's format beside the project profile so editors can resolve it. The installed harness carries its own copy of the canonical legacy schema under `.agents/css-modules-harness/assets/`, so a compact project needs no `.agents/css-modules.schema.json`.
+Both schemas live only in `.agents/css-modules-harness/assets/`, which setup installs for every profile, including `checks: "off"`. Nothing is copied beside the profile. The profile's `$schema` points at `./css-modules-harness/assets/css-modules.compact.schema.json` (or `css-modules.schema.json` for legacy profiles) so editors can resolve it. That file is editor metadata only: validation always uses the schema bundled with the harness scripts, so editing the copy cannot change what the audit or checker accepts.
 
 The audit validates required shape without executing application code. Behavioral verification remains a separate explicit action.
 

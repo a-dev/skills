@@ -1117,7 +1117,7 @@ test("audits compact input through the same resolved profile contract", async ()
       ".agents/css-modules.json",
       `${JSON.stringify(
         {
-          $schema: "./css-modules.compact.schema.json",
+          $schema: "./css-modules-harness/assets/css-modules.compact.schema.json",
           format: "css-modules-compact",
           version: 1,
           preset: "vite-react@1",
@@ -1145,11 +1145,6 @@ test("audits compact input through the same resolved profile contract", async ()
         2,
       )}\n`,
     );
-    await write(
-      root,
-      ".agents/css-modules.compact.schema.json",
-      JSON.stringify(await jsonAsset("css-modules.compact.schema.json")) + "\n",
-    );
     const result = await auditProject({ root });
     assert.equal(result.findings.find(({ id }) => id === "profile.schema")?.status, "aligned");
     assert.equal(result.resolved.format, "compact");
@@ -1159,8 +1154,3 @@ test("audits compact input through the same resolved profile contract", async ()
     await rm(root, { recursive: true, force: true });
   }
 });
-
-async function jsonAsset(name) {
-  const filePath = new URL(`../assets/${name}`, import.meta.url);
-  return JSON.parse(await readFile(filePath, "utf8"));
-}

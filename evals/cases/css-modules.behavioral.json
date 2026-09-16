@@ -134,7 +134,7 @@
       "adoptionContext": "valid legacy profile with an explicit migration request",
       "policy": "Migration is setup-owned and authorized only by the explicit request; compare resolved contracts first.",
       "provenance": "direct user request explicitly authorizing migration",
-      "allowedEdits": [".agents/css-modules.json", ".agents/css-modules.compact.schema.json"],
+      "allowedEdits": [".agents/css-modules.json", ".agents/css-modules-harness/**"],
       "existingFailures": [],
       "checks": ["setup migrate", "css:generate", "css:types", "build"],
       "judgmentQuestions": [

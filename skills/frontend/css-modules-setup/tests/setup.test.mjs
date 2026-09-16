@@ -544,19 +544,9 @@ test("a zero-change plan reports missing infrastructure separately from mutation
   try {
     const selected = await readFile(path.join(root, "selected-profile.json"), "utf8");
     await write(root, ".agents/css-modules.json", selected);
-    await write(
-      root,
-      ".agents/css-modules.schema.json",
-      await readFile(
-        path.join(
-          REPOSITORY_ROOT,
-          "skills/frontend/css-modules-setup/assets/css-modules.schema.json",
-        ),
-        "utf8",
-      ),
-    );
     await rm(path.join(root, "vite.config.ts"));
     await rm(path.join(root, "src"), { recursive: true });
+    await applySetupPlan(await planSetup({ root, mode: "align" }));
 
     const plan = await planSetup({ root, mode: "align" });
     const human = formatPlan(plan);
@@ -1063,9 +1053,20 @@ test("compact bootstrap admits zero shared modules without placeholder CSS", asy
     assert.deepEqual(plan.requiredInputs, []);
     assert.ok(plan.changes.some(({ path: filePath }) => filePath.endsWith("index.ts")));
     assert.ok(
-      plan.changes.some(({ path: filePath }) =>
-        filePath.endsWith("css-modules.compact.schema.json"),
+      plan.changes.some(
+        ({ path: filePath }) =>
+          filePath === ".agents/css-modules-harness/assets/css-modules.compact.schema.json",
       ),
+    );
+    assert.ok(
+      !plan.changes.some(({ path: filePath }) => /^\.agents\/[^/]+\.schema\.json$/.test(filePath)),
+    );
+    const stored = plan.changes.find(
+      ({ path: filePath }) => filePath === ".agents/css-modules.json",
+    );
+    assert.equal(
+      JSON.parse(stored.content).$schema,
+      "./css-modules-harness/assets/css-modules.compact.schema.json",
     );
     assert.ok(!plan.changes.some(({ path: filePath }) => filePath.endsWith(".module.css")));
     assert.ok(!plan.dependencies.includes("oxlint"));
@@ -1264,7 +1265,17 @@ test("explicit legacy-to-compact migration compares and preserves the resolved c
     assert.match(migrated.content, /roles\.css/);
     await applySetupPlan(plan);
     await assert.rejects(readFile(path.join(root, ".agents/css-modules.schema.json"), "utf8"));
-    assert.ok(await readFile(path.join(root, ".agents/css-modules.compact.schema.json"), "utf8"));
+    await assert.rejects(
+      readFile(path.join(root, ".agents/css-modules.compact.schema.json"), "utf8"),
+    );
+    const stored = JSON.parse(await readFile(path.join(root, ".agents/css-modules.json"), "utf8"));
+    assert.equal(stored.$schema, "./css-modules-harness/assets/css-modules.compact.schema.json");
+    assert.ok(
+      await readFile(
+        path.join(root, ".agents/css-modules-harness/assets/css-modules.compact.schema.json"),
+        "utf8",
+      ),
+    );
 
     const second = await planSetup({
       root,
@@ -1444,6 +1455,116 @@ test("a stale legacy schema beside a compact profile is removed only by migrate"
     const custom = await planSetup({ root, mode: "migrate", authorizeMigrate: true });
     assert.equal(custom.status, "conflict");
     assert.deepEqual(custom.changes, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("checks off still installs the harness assets but no checker", async () => {
+  const root = await createGreenfieldFixture();
+
+  try {
+    await write(
+      root,
+      "compact-profile.json",
+      `${JSON.stringify(compactProfile({ checks: "off" }), null, 2)}\n`,
+    );
+    const plan = await planSetup({
+      root,
+      mode: "bootstrap",
+      profileSource: "compact-profile.json",
+    });
+    assert.equal(plan.status, "ready");
+    const paths = plan.changes.map(({ path: filePath }) => filePath);
+    for (const expected of [
+      ".agents/css-modules-harness/versions.json",
+      ".agents/css-modules-harness/assets/css-modules.compact.schema.json",
+      ".agents/css-modules-harness/assets/css-modules.presets.json",
+      ".agents/css-modules-harness/assets/css-modules.schema.json",
+    ]) {
+      assert.ok(paths.includes(expected), expected);
+    }
+    assert.ok(!paths.some((filePath) => /css-modules-harness\/(scripts|harness)\//.test(filePath)));
+    assert.ok(!paths.some((filePath) => /^\.agents\/[^/]+\.schema\.json$/.test(filePath)));
+
+    await applySetupPlan(plan);
+    assert.equal((await planSetup({ root, mode: "align" })).status, "aligned");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a stale compact schema copy is removed and $schema repointed only by migrate", async () => {
+  const root = await createGreenfieldFixture();
+
+  try {
+    await write(root, ".agents/css-modules.json", `${JSON.stringify(compactProfile(), null, 2)}\n`);
+    await applySetupPlan(await planSetup({ root, mode: "bootstrap" }));
+    // An earlier setup wrote the copy and pointed $schema at it.
+    const oldProfile = `${JSON.stringify(
+      { $schema: "./css-modules.compact.schema.json", ...compactProfile() },
+      null,
+      2,
+    )}\n`;
+    await write(root, ".agents/css-modules.json", oldProfile);
+    const compactSchema = await readFile(
+      path.join(
+        REPOSITORY_ROOT,
+        "skills/frontend/css-modules-setup/assets/css-modules.compact.schema.json",
+      ),
+      "utf8",
+    );
+    await write(root, ".agents/css-modules.compact.schema.json", compactSchema);
+
+    const align = await planSetup({ root, mode: "align" });
+    assert.equal(align.status, "conflict");
+    assert.deepEqual(align.changes, []);
+    assert.deepEqual(align.conflicts.map(({ path: filePath }) => filePath).sort(), [
+      ".agents/css-modules.compact.schema.json",
+      ".agents/css-modules.json",
+    ]);
+    for (const conflict of align.conflicts) assert.match(conflict.reason, /migrate/);
+
+    const migrate = await planSetup({ root, mode: "migrate", authorizeMigrate: true });
+    assert.deepEqual(
+      migrate.changes.map(({ action, path: filePath }) => [action, filePath]),
+      [
+        ["replace", ".agents/css-modules.json"],
+        ["delete", ".agents/css-modules.compact.schema.json"],
+      ],
+    );
+    assert.ok(!migrate.changes.some((change) => "migrateOnly" in change));
+    await applySetupPlan(migrate);
+    const stored = JSON.parse(await readFile(path.join(root, ".agents/css-modules.json"), "utf8"));
+    assert.equal(stored.$schema, "./css-modules-harness/assets/css-modules.compact.schema.json");
+    assert.equal((await planSetup({ root, mode: "align" })).status, "aligned");
+
+    // Only the bundled $id marks a copy as skill-owned.
+    const custom = JSON.parse(compactSchema);
+    custom.$id = "https://example.test/team-profile.schema.json";
+    await write(root, ".agents/css-modules.compact.schema.json", JSON.stringify(custom));
+    const customPlan = await planSetup({ root, mode: "migrate", authorizeMigrate: true });
+    assert.equal(customPlan.status, "conflict");
+    assert.deepEqual(customPlan.changes, []);
+    assert.match(customPlan.conflicts[0].reason, /not a bundled schema copy/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a custom $schema is left as authored", async () => {
+  const root = await createGreenfieldFixture();
+
+  try {
+    await write(
+      root,
+      ".agents/css-modules.json",
+      `${JSON.stringify({ $schema: "https://example.test/schema.json", ...compactProfile() }, null, 2)}\n`,
+    );
+    await applySetupPlan(await planSetup({ root, mode: "bootstrap" }));
+    const migrate = await planSetup({ root, mode: "migrate", authorizeMigrate: true });
+    assert.equal(migrate.status, "aligned");
+    assert.deepEqual(migrate.changes, []);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

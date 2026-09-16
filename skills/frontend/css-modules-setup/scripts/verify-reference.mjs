@@ -353,7 +353,7 @@ async function runCompactEmptyScenario() {
   const profileSource = "compact-profile.json";
   try {
     const profile = {
-      $schema: "./css-modules.compact.schema.json",
+      $schema: "./css-modules-harness/assets/css-modules.compact.schema.json",
       format: "css-modules-compact",
       version: 1,
       preset: "vite-react@1",

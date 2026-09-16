@@ -25,18 +25,20 @@ npx skills add a-dev/skills --list
 
 ### Frontend CSS Modules
 
-An applied `css-modules-setup` plan creates a project profile and its matching local schema:
+An applied `css-modules-setup` plan creates a project profile and a harness folder that holds the schemas:
 
 ```text
 .agents/
   css-modules.json
-  css-modules.schema.json              # legacy profile
-  css-modules.compact.schema.json      # compact profile
+  css-modules-harness/
+    assets/
+      css-modules.compact.schema.json  # compact profile
+      css-modules.schema.json          # legacy profile
 ```
 
 `css-modules.json` records your project decisions in the compact `css-modules-compact` format or the supported legacy format. Edit this file; the skills and harness read it.
 
-`css-modules.schema.json` or `css-modules.compact.schema.json` defines the valid profile structure for editor validation and autocomplete. Setup copies the matching schema beside the profile so it works offline across agent hosts and installation methods. `show-config` displays the resolved contract as read-only output.
+`css-modules.compact.schema.json` or `css-modules.schema.json` defines the valid profile structure for editor validation and autocomplete. Setup installs both in the harness `assets/` folder, even with checks off, and the profile's `$schema` points there, so it works offline across agent hosts and installation methods. The harness always validates with its bundled schema, so editing that copy does not change validation. `show-config` displays the resolved contract as read-only output.
 
 `audit` and `verify` write neither file. Both are read-only.
 
