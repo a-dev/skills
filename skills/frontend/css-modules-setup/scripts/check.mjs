@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 
-import babelParser from "@babel/eslint-parser";
 import { spawn } from "node:child_process";
-import { ESLint } from "eslint";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
@@ -11,7 +9,6 @@ import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import stylelint from "stylelint";
 
-import eslintPlugin, { eslintRuleIds } from "../harness/eslint-plugin.mjs";
 import stylelintPlugins, { stylelintRuleIds } from "../harness/stylelint-plugin.mjs";
 import { colorValuePositions } from "./color-analysis.mjs";
 import {
@@ -24,7 +21,7 @@ import {
   selectSeverity,
   walk,
 } from "./lib.mjs";
-import { readResolvedContract, resolveLayerOwner, sharedApiInterpretation } from "./contract.mjs";
+import { readResolvedContract, resolveLayerOwner, tsxRuleSettings } from "./contract.mjs";
 
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".mts", ".cjs", ".cts"]);
 
@@ -59,12 +56,20 @@ function expectedLayer(profile, relativeFile) {
   return owner.status === "resolved" ? owner.layer : undefined;
 }
 
+// ESLint, its Babel parser, and oxc-parser are optional per engine, so they are
+// imported only when the selected lintEngine needs them.
 async function runEslint(root, profile, severity) {
   const sourceFiles = await walk(
     resolveInside(root, profile.appRoot),
     (file) => SOURCE_EXTENSIONS.has(path.extname(file)) && !file.endsWith(".d.ts"),
   );
   if (sourceFiles.length === 0) return [];
+  const [{ ESLint }, { default: babelParser }, { default: eslintPlugin, eslintRuleIds }] =
+    await Promise.all([
+      import("eslint"),
+      import("@babel/eslint-parser"),
+      import("../harness/eslint-plugin.mjs"),
+    ]);
   const ruleSeverity = severity === "error" ? 2 : 1;
   const eslint = new ESLint({
     cwd: root,
@@ -81,16 +86,7 @@ async function runEslint(root, profile, severity) {
         },
         plugins: { "css-modules": eslintPlugin },
         rules: Object.fromEntries(eslintRuleIds.map((id) => [`css-modules/${id}`, ruleSeverity])),
-        settings: {
-          cssModules: {
-            classNamesHelper: profile.helpers.classNames,
-            cssVariablesHelper: profile.helpers.cssVariables,
-            privateBooleanAttributes: profile.enforcement?.privateBooleanAttributes ?? [
-              "data-loading",
-            ],
-            ...sharedApiInterpretation(profile),
-          },
-        },
+        settings: { cssModules: tsxRuleSettings(profile) },
       },
     ],
   });
@@ -108,6 +104,33 @@ async function runEslint(root, profile, severity) {
       }),
     ),
   );
+}
+
+async function runTsxRules(root, profile, severity) {
+  if (profile.lintEngine === "oxlint") {
+    const { runOxlint } = await import("./check-oxlint.mjs");
+    return runOxlint(root, profile, severity);
+  }
+  return runEslint(root, profile, severity);
+}
+
+// Returns parse(code, filePath) -> ESTree Program for the export analysis.
+async function loadModuleParser(lintEngine) {
+  if (lintEngine === "oxlint") {
+    const { parseSync } = await import("oxc-parser");
+    return (code, filePath) => {
+      const result = parseSync(filePath, code, { sourceType: "module" });
+      if (result.errors.length > 0) throw new Error(result.errors[0].message);
+      return result.program;
+    };
+  }
+  const { default: babelParser } = await import("@babel/eslint-parser");
+  return (code, filePath) =>
+    babelParser.parseForESLint(code, {
+      filePath,
+      requireConfigFile: false,
+      babelOptions: { parserOpts: { plugins: ["typescript", "jsx"] } },
+    }).ast;
 }
 
 async function runStylelint(root, profile, severity, palette) {
@@ -247,7 +270,7 @@ function unwrapExportExpression(node) {
   return node;
 }
 
-async function analyzeExportBindings(filePath, memo = new Map(), visiting = new Set()) {
+async function analyzeExportBindings(filePath, parse, memo = new Map(), visiting = new Set()) {
   const resolved = path.resolve(filePath);
   if (memo.has(resolved)) return memo.get(resolved);
   if (visiting.has(resolved)) {
@@ -260,13 +283,9 @@ async function analyzeExportBindings(filePath, memo = new Map(), visiting = new 
   }
 
   visiting.add(resolved);
-  let parsed;
+  let program;
   try {
-    parsed = babelParser.parseForESLint(await readFile(resolved, "utf8"), {
-      filePath: resolved,
-      requireConfigFile: false,
-      babelOptions: { parserOpts: { plugins: ["typescript", "jsx"] } },
-    });
+    program = parse(await readFile(resolved, "utf8"), resolved);
   } catch {
     visiting.delete(resolved);
     const unparsed = { complete: false, bindings: new Map(), reason: "unparseable export source" };
@@ -296,7 +315,7 @@ async function analyzeExportBindings(filePath, memo = new Map(), visiting = new 
       if (importedName === "default") return CSS_EXPORT(target);
       return WRONG_EXPORT(`named export ${importedName} from ${specifier}`);
     }
-    const result = await analyzeExportBindings(target, memo, visiting);
+    const result = await analyzeExportBindings(target, parse, memo, visiting);
     if (!result.complete) {
       complete = false;
       reason = result.reason;
@@ -307,7 +326,7 @@ async function analyzeExportBindings(filePath, memo = new Map(), visiting = new 
     );
   }
 
-  for (const statement of parsed.ast.body) {
+  for (const statement of program.body) {
     if (statement.type === "ImportDeclaration") {
       for (const specifier of statement.specifiers) {
         const localName = specifier.local?.name;
@@ -369,7 +388,7 @@ async function analyzeExportBindings(filePath, memo = new Map(), visiting = new 
             : "unresolved star export";
           continue;
         }
-        const result = await analyzeExportBindings(target, memo, visiting);
+        const result = await analyzeExportBindings(target, parse, memo, visiting);
         if (!result.complete) {
           complete = false;
           reason = result.reason;
@@ -554,7 +573,8 @@ async function runContracts(root, profile, severity) {
   }
 
   const entryPath = resolveInside(root, profile.sharedApi.entryPoint);
-  const entryAnalysis = await analyzeExportBindings(entryPath);
+  const parse = await loadModuleParser(profile.lintEngine);
+  const entryAnalysis = await analyzeExportBindings(entryPath, parse);
   for (const module of profile.sharedApi.modules) {
     if (module.export) {
       const state = entryAnalysis.bindings.get(module.export);
@@ -630,7 +650,7 @@ export async function checkProject({
   const palette = await paletteTokens(resolvedRoot, profile);
   const contractResult = await runContracts(resolvedRoot, profile, selectedSeverity);
   const rawFindings = [
-    ...(await runEslint(resolvedRoot, profile, selectedSeverity)),
+    ...(await runTsxRules(resolvedRoot, profile, selectedSeverity)),
     ...(await runStylelint(resolvedRoot, profile, selectedSeverity, palette)),
     ...contractResult.findings,
   ];

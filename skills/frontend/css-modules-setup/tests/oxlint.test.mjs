@@ -265,3 +265,64 @@ export function Unrelated({ busy }: { busy: boolean }) {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+// Fails any attempt to load the ESLint toolchain, so the aggregate checker must
+// run an Oxlint project without those packages installed.
+const BLOCK_ESLINT = `data:text/javascript,${encodeURIComponent(`
+import { registerHooks } from "node:module";
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (/^(eslint|@babel\\/eslint-parser|@babel\\/core)$/.test(specifier)) {
+      throw new Error("blocked " + specifier);
+    }
+    return nextResolve(specifier, context);
+  },
+});
+`)}`;
+
+async function runAggregate(root) {
+  const checker = new URL("../scripts/check.mjs", import.meta.url).pathname;
+  try {
+    const result = await execFileAsync(process.execPath, [
+      "--import",
+      BLOCK_ESLINT,
+      checker,
+      "--root",
+      root,
+      "--format",
+      "json",
+    ]);
+    return { code: 0, json: JSON.parse(result.stdout) };
+  } catch (error) {
+    if (!error.stdout) throw new Error(`check.mjs produced no JSON: ${error.stderr}`);
+    return { code: error.code, json: JSON.parse(error.stdout) };
+  }
+}
+
+test("css:check runs the TSX rules through Oxlint when the project uses Oxlint", async () => {
+  const root = await createFixture({ invalid: true });
+
+  try {
+    await write(root, ".oxlintrc.json", "{}\n");
+    await write(root, "src/styles/atoms.module.css", ".root {}\n");
+    await write(
+      root,
+      "src/styles/index.ts",
+      'export type { Theme } from "./theme";\nexport { default as atoms } from "./atoms.module.css";\n',
+    );
+    const result = await runAggregate(root);
+    const engines = new Set(result.json.findings.map(({ engine }) => engine));
+
+    assert.equal(result.code, 1);
+    assert.ok(engines.has("oxlint"));
+    assert.ok(!engines.has("eslint"));
+    assert.ok(result.json.findings.some(({ ruleId }) => ruleId === "css-modules/no-computed-key"));
+    // oxc-parser proved the shared export without the Babel parser.
+    assert.ok(
+      !result.json.findings.some(({ ruleId }) => ruleId === "css-modules/shared-entry-export"),
+    );
+    assert.deepEqual(result.json.uncertainties ?? [], []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

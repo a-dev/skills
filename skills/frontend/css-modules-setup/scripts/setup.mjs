@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -48,24 +48,28 @@ const SCRIPT_ROOT_FILES = [
   "check.mjs",
   "lib.mjs",
 ];
+// eslint-plugin.mjs holds the rule implementations that oxlint-plugin.mjs
+// re-exports; it has no ESLint import and ships with both engines.
 const BASE_HARNESS_FILES = ["eslint-plugin.mjs", "stylelint-plugin.mjs"];
+const OXLINT_SCRIPT_FILES = ["check-oxlint.mjs"];
 const OXLINT_HARNESS_FILES = ["oxlint-plugin.mjs"];
+const HARNESS_ROOT_PATH = ".agents/css-modules-harness";
+const LEGACY_SCHEMA_PATH = ".agents/css-modules.schema.json";
 const BASE_ENFORCEMENT_DEPENDENCIES = [
-  "@babel/core",
-  "@babel/eslint-parser",
   "color-name",
-  "eslint",
   "postcss",
   "postcss-selector-parser",
   "postcss-value-parser",
   "stylelint",
 ];
+const ENGINE_DEPENDENCIES = {
+  eslint: ["@babel/core", "@babel/eslint-parser", "eslint"],
+  oxlint: ["oxc-parser", "oxlint"],
+};
 const TEMPLATE_DEPENDENCIES = ["postcss"];
 
 function enforcementDependencies(engine = "eslint") {
-  return engine === "oxlint"
-    ? [...BASE_ENFORCEMENT_DEPENDENCIES, "oxlint"]
-    : [...BASE_ENFORCEMENT_DEPENDENCIES];
+  return [...BASE_ENFORCEMENT_DEPENDENCIES, ...ENGINE_DEPENDENCIES[engine]].sort();
 }
 
 function versionMajor(version) {
@@ -256,7 +260,7 @@ async function bundledCheckerFiles({ lintEngine = "eslint" } = {}) {
   ];
   const scriptFiles = [
     ...SCRIPT_ROOT_FILES,
-    ...(lintEngine === "oxlint" ? ["check-oxlint.mjs"] : []),
+    ...(lintEngine === "oxlint" ? OXLINT_SCRIPT_FILES : []),
   ];
   for (const name of scriptFiles) {
     files.push({
@@ -276,7 +280,13 @@ async function bundledCheckerFiles({ lintEngine = "eslint" } = {}) {
       content: await readFile(path.join(HARNESS_ROOT, name), "utf8"),
     });
   }
-  for (const name of ["css-modules.compact.schema.json", "css-modules.presets.json"]) {
+  // lib.mjs validates against the canonical schema from ../assets, so the
+  // harness no longer depends on a legacy schema copy beside the profile.
+  for (const name of [
+    "css-modules.compact.schema.json",
+    "css-modules.presets.json",
+    "css-modules.schema.json",
+  ]) {
     files.push({
       path: `.agents/css-modules-harness/assets/${name}`,
       source: `assets/${name}`,
@@ -284,6 +294,40 @@ async function bundledCheckerFiles({ lintEngine = "eslint" } = {}) {
     });
   }
   return files;
+}
+
+// Skill-owned files that the selected configuration no longer uses: the legacy
+// schema copy once the profile is compact, and Oxlint adapter files once the
+// project uses ESLint. Only migrate removes them.
+async function obsoleteFiles(root, { compact, enforcement, lintEngine }) {
+  const candidates = [];
+  if (compact) candidates.push({ path: LEGACY_SCHEMA_PATH, kind: "legacy-schema" });
+  if (enforcement && lintEngine !== "oxlint") {
+    candidates.push(
+      ...OXLINT_SCRIPT_FILES.map((name) => ({
+        path: `${HARNESS_ROOT_PATH}/scripts/${name}`,
+        kind: "harness",
+      })),
+      ...OXLINT_HARNESS_FILES.map((name) => ({
+        path: `${HARNESS_ROOT_PATH}/harness/${name}`,
+        kind: "harness",
+      })),
+    );
+  }
+  const found = [];
+  for (const candidate of candidates) {
+    const target = resolveInside(root, candidate.path);
+    if (await exists(target)) found.push({ ...candidate, before: await readFile(target, "utf8") });
+  }
+  return found;
+}
+
+function isLegacySchemaCopy(content) {
+  try {
+    return JSON.parse(content).$id === "./css-modules.schema.json";
+  } catch {
+    return false;
+  }
 }
 
 function render(template, variables, templateName) {
@@ -617,9 +661,13 @@ async function renderBaseline(profile, inputs) {
   return { requiredInputs: [], errors: validateRenderedCss(files), files };
 }
 
-async function classifyDesiredFiles(root, desiredFiles, { allowReplace = false } = {}) {
+async function classifyDesiredFiles(
+  root,
+  desiredFiles,
+  { allowReplace = false, obsolete = [] } = {},
+) {
   const changes = [];
-  const preflight = await preflightWriteSet(root, desiredFiles);
+  const preflight = await preflightWriteSet(root, [...desiredFiles, ...obsolete]);
   const conflicts = preflight.errors.map((error) => ({
     path: error.path,
     reason: error.reason,
@@ -647,6 +695,29 @@ async function classifyDesiredFiles(root, desiredFiles, { allowReplace = false }
           sources: [desired.source ?? desired.path],
         });
       }
+    }
+  }
+
+  for (const stale of obsolete) {
+    if (stale.kind === "legacy-schema" && !isLegacySchemaCopy(stale.before)) {
+      conflicts.push({
+        path: stale.path,
+        reason: "compact profile leaves this file unused, but it is not the bundled legacy schema",
+        sources: [stale.path],
+      });
+    } else if (allowReplace) {
+      changes.push({
+        action: "delete",
+        path: stale.path,
+        source: stale.path,
+        before: stale.before,
+      });
+    } else {
+      conflicts.push({
+        path: stale.path,
+        reason: "obsolete skill-owned file; run migrate --authorize-migrate to remove it",
+        sources: [stale.path],
+      });
     }
   }
 
@@ -830,16 +901,15 @@ export async function planSetup({
         });
   const storedContract = migration?.after ?? selectedContract;
   const storedResolvedProfile = storedContract.profile;
-  const lintEngine =
-    isCompactInput(storedProfile) && storedProfile.lintEngine === "oxlint" ? "oxlint" : "eslint";
-  const desiredFiles = [
-    {
-      path: ".agents/css-modules.schema.json",
+  const lintEngine = storedResolvedProfile.lintEngine ?? "eslint";
+  const desiredFiles = [];
+  if (!isCompactInput(storedProfile)) {
+    desiredFiles.push({
+      path: LEGACY_SCHEMA_PATH,
       source: "assets/css-modules.schema.json",
       content: schema,
-    },
-  ];
-  if (isCompactInput(storedProfile)) {
+    });
+  } else {
     desiredFiles.push({
       path: ".agents/css-modules.compact.schema.json",
       source: "assets/css-modules.compact.schema.json",
@@ -911,8 +981,14 @@ export async function planSetup({
     desiredFiles.push(...(await bundledCheckerFiles({ lintEngine })));
   }
 
+  const obsolete = await obsoleteFiles(resolvedRoot, {
+    compact: isCompactInput(storedProfile),
+    enforcement: Boolean(storedResolvedProfile.enforcement),
+    lintEngine,
+  });
   const { changes, conflicts } = await classifyDesiredFiles(resolvedRoot, desiredFiles, {
     allowReplace: mode === "migrate",
+    obsolete,
   });
   const plan = {
     ...base,
@@ -986,10 +1062,10 @@ export async function applySetupPlan(plan) {
       throw error;
     }
     if (
-      change.action === "replace" &&
+      (change.action === "replace" || change.action === "delete") &&
       (!(await exists(target)) || (await readFile(target, "utf8")) !== change.before)
     ) {
-      const error = new Error(`Refusing to replace changed file ${change.path}`);
+      const error = new Error(`Refusing to ${change.action} changed file ${change.path}`);
       error.touched = [];
       throw error;
     }
@@ -998,7 +1074,7 @@ export async function applySetupPlan(plan) {
   const touched = [];
   try {
     for (const change of plan.changes) {
-      if (!new Set(["create", "replace"]).has(change.action)) {
+      if (!new Set(["create", "replace", "delete"]).has(change.action)) {
         throw new Error(`Unsupported mutation: ${change.action}`);
       }
       const target = resolveInside(plan.root, change.path);
@@ -1008,6 +1084,11 @@ export async function applySetupPlan(plan) {
         }
         await mkdir(path.dirname(target), { recursive: true });
         await writeFile(target, change.content, { flag: "wx" });
+      } else if (change.action === "delete") {
+        if (!(await exists(target)) || (await readFile(target, "utf8")) !== change.before) {
+          throw new Error(`Refusing to delete changed file ${change.path}`);
+        }
+        await rm(target);
       } else {
         if (!(await exists(target)) || (await readFile(target, "utf8")) !== change.before) {
           throw new Error(`Refusing to replace changed file ${change.path}`);
@@ -1069,6 +1150,10 @@ export function formatPlan(plan) {
     lines.push(change.before);
     lines.push("  AFTER  " + change.path);
     lines.push(change.content);
+  }
+  for (const change of plan.changes.filter(({ action }) => action === "delete")) {
+    lines.push("  REMOVED " + change.path);
+    lines.push(change.before);
   }
   for (const conflict of plan.conflicts) {
     lines.push(

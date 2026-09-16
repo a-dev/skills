@@ -14,7 +14,7 @@ Load this adapter only for a Vite + React target. Do not describe another framew
 
 Install `vite-css-modules` as a development dependency. The reference `cx` helper is dependency-free; keep a project's existing class combiner when it already has one.
 
-When the profile enables mechanical enforcement, install the dependencies printed by the setup plan. ESLint is the default aggregate engine and the plan does not include Oxlint. A compact profile may explicitly select `lintEngine: "oxlint"`; that adds only the optional Oxlint adapter while preserving Stylelint and PostCSS cross-file checks.
+When the profile enables mechanical enforcement, install the dependencies printed by the setup plan. The TSX rules run on one lint engine, resolved as the explicit compact `lintEngine`, otherwise the linter the project already runs (Oxlint or ESLint config files and package scripts, then dependencies), otherwise ESLint. An Oxlint project gets `oxlint` and `oxc-parser` and no ESLint or Babel packages; an ESLint project gets `eslint`, `@babel/eslint-parser`, and `@babel/core`. Stylelint and the cross-file checks run with either engine.
 
 Use the detected package manager and selected workspace package. Do not copy npm commands into pnpm, Yarn, or Bun projects.
 

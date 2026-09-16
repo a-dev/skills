@@ -36,7 +36,7 @@ Legacy-to-compact migration is a separate explicit operation:
 node scripts/setup.mjs migrate --to compact --authorize-migrate --format human
 ```
 
-The planner builds a compact candidate, resolves both inputs through `contract.mjs`, and compares the resulting profiles before planning a replacement. It preserves custom topology, helper names, barrel paths, shared module exports and frozen classes, all palette/semantic files and `modeMapping`, commands, documents, composition rules, runtime guidance, and exceptions. A field that cannot be represented losslessly is named in the blocker and produces no writes. A second run reports `already-compact` and plans no replacement. Audit, align, daily checks, and show-config never perform this migration.
+The planner builds a compact candidate, resolves both inputs through `contract.mjs`, and compares the resulting profiles before planning a replacement. It preserves custom topology, helper names, barrel paths, shared module exports and frozen classes, all palette/semantic files and `modeMapping`, commands, documents, composition rules, runtime guidance, and exceptions. A field that cannot be represented losslessly is named in the blocker and produces no writes. The same plan deletes the legacy `.agents/css-modules.schema.json` copy, which a compact profile no longer uses; a file at that path that is not the bundled legacy schema is a conflict instead. A second run reports `already-compact` and plans no changes. Audit, align, daily checks, and show-config never perform this migration.
 
 Before `migrate` mode writes:
 

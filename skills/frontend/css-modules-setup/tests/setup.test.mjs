@@ -1221,6 +1221,18 @@ test("explicit legacy-to-compact migration compares and preserves the resolved c
       { kind: "rule", scope: "src/widgets/**", rule: "rule-id", reason: "library" },
     ];
     await write(root, ".agents/css-modules.json", `${JSON.stringify(current, null, 2)}\n`);
+    // The legacy setup copied its schema beside the profile.
+    await write(
+      root,
+      ".agents/css-modules.schema.json",
+      await readFile(
+        path.join(
+          REPOSITORY_ROOT,
+          "skills/frontend/css-modules-setup/assets/css-modules.schema.json",
+        ),
+        "utf8",
+      ),
+    );
 
     const plan = await planSetup({
       root,
@@ -1237,6 +1249,13 @@ test("explicit legacy-to-compact migration compares and preserves the resolved c
         .map(({ path: filePath }) => filePath),
       [".agents/css-modules.json"],
     );
+    assert.deepEqual(
+      plan.changes
+        .filter(({ action }) => action === "delete")
+        .map(({ path: filePath }) => filePath),
+      [".agents/css-modules.schema.json"],
+    );
+    assert.match(formatPlan(plan), /DELETE {2}\.agents\/css-modules\.schema\.json/);
     const migrated = plan.changes.find(
       ({ path: filePath }) => filePath === ".agents/css-modules.json",
     );
@@ -1244,6 +1263,8 @@ test("explicit legacy-to-compact migration compares and preserves the resolved c
     assert.match(migrated.content, /modeMapping/);
     assert.match(migrated.content, /roles\.css/);
     await applySetupPlan(plan);
+    await assert.rejects(readFile(path.join(root, ".agents/css-modules.schema.json"), "utf8"));
+    assert.ok(await readFile(path.join(root, ".agents/css-modules.compact.schema.json"), "utf8"));
 
     const second = await planSetup({
       root,
@@ -1294,6 +1315,172 @@ test("Oxlint packaging is explicit and does not replace the shared CSS contract 
     assert.ok(
       plan.changes.some(({ path: filePath }) => filePath.endsWith("harness/eslint-plugin.mjs")),
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+function compactProfile(overrides = {}) {
+  return {
+    format: "css-modules-compact",
+    version: 1,
+    preset: "vite-react@1",
+    styles: { root: "src/foundation", alias: "#foundation" },
+    composition: "markup",
+    colors: false,
+    checks: "warn",
+    ...overrides,
+  };
+}
+
+async function setPackageJson(root, update) {
+  const packagePath = path.join(root, "package.json");
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  update(packageJson);
+  await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+}
+
+test("an Oxlint project gets the Oxlint engine without ESLint dependencies", async () => {
+  const root = await createGreenfieldFixture();
+
+  try {
+    await setPackageJson(root, (packageJson) => {
+      packageJson.scripts.lint = "oxlint src";
+      // A harness-only ESLint left by an earlier setup must not decide the engine.
+      packageJson.devDependencies = { eslint: "10.7.0", oxlint: "1.74.0" };
+    });
+    await write(root, "compact-profile.json", `${JSON.stringify(compactProfile(), null, 2)}\n`);
+    const plan = await planSetup({
+      root,
+      mode: "bootstrap",
+      profileSource: "compact-profile.json",
+    });
+
+    assert.equal(plan.status, "ready");
+    assert.equal(plan.resolvedProfile.lintEngine, "oxlint");
+    assert.deepEqual(
+      plan.dependencies.filter((name) => /lint|babel|oxc/.test(name)),
+      ["oxc-parser", "oxlint", "stylelint"],
+    );
+    assert.ok(
+      plan.changes.some(({ path: filePath }) => filePath.endsWith("scripts/check-oxlint.mjs")),
+    );
+    assert.ok(
+      plan.changes.some(({ path: filePath }) =>
+        filePath.endsWith("css-modules-harness/assets/css-modules.schema.json"),
+      ),
+    );
+    assert.ok(
+      !plan.changes.some(({ path: filePath }) => filePath === ".agents/css-modules.schema.json"),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("lint engine discovery: explicit choice wins, ESLint stays the fallback", async () => {
+  const root = await createGreenfieldFixture();
+
+  try {
+    await write(root, ".oxlintrc.json", "{}\n");
+    await write(
+      root,
+      "explicit.json",
+      `${JSON.stringify(compactProfile({ lintEngine: "eslint" }), null, 2)}\n`,
+    );
+    const explicit = await planSetup({ root, mode: "bootstrap", profileSource: "explicit.json" });
+    assert.equal(explicit.resolvedProfile.lintEngine, "eslint");
+    assert.ok(explicit.dependencies.includes("eslint"));
+    assert.ok(!explicit.dependencies.includes("oxlint"));
+
+    await write(root, "eslint.config.mjs", "export default [];\n");
+    await write(root, "implicit.json", `${JSON.stringify(compactProfile(), null, 2)}\n`);
+    const both = await planSetup({ root, mode: "bootstrap", profileSource: "implicit.json" });
+    assert.equal(both.resolvedProfile.lintEngine, "eslint");
+
+    await rm(path.join(root, ".oxlintrc.json"));
+    await rm(path.join(root, "eslint.config.mjs"));
+    const none = await planSetup({ root, mode: "bootstrap", profileSource: "implicit.json" });
+    assert.equal(none.resolvedProfile.lintEngine, "eslint");
+    assert.ok(none.dependencies.includes("@babel/eslint-parser"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a stale legacy schema beside a compact profile is removed only by migrate", async () => {
+  const root = await createGreenfieldFixture();
+
+  try {
+    await write(root, ".agents/css-modules.json", `${JSON.stringify(compactProfile(), null, 2)}\n`);
+    const bootstrap = await planSetup({ root, mode: "bootstrap" });
+    await applySetupPlan(bootstrap);
+    const legacySchema = await readFile(
+      path.join(
+        REPOSITORY_ROOT,
+        "skills/frontend/css-modules-setup/assets/css-modules.schema.json",
+      ),
+      "utf8",
+    );
+    await write(root, ".agents/css-modules.schema.json", legacySchema);
+
+    const align = await planSetup({ root, mode: "align" });
+    assert.equal(align.status, "conflict");
+    assert.match(
+      align.conflicts.find(({ path: filePath }) => filePath === ".agents/css-modules.schema.json")
+        .reason,
+      /migrate/,
+    );
+
+    const migrate = await planSetup({ root, mode: "migrate", authorizeMigrate: true });
+    assert.deepEqual(
+      migrate.changes.map(({ action, path: filePath }) => [action, filePath]),
+      [["delete", ".agents/css-modules.schema.json"]],
+    );
+    await applySetupPlan(migrate);
+    assert.equal((await planSetup({ root, mode: "align" })).status, "aligned");
+
+    await write(root, ".agents/css-modules.schema.json", '{ "custom": true }\n');
+    const custom = await planSetup({ root, mode: "migrate", authorizeMigrate: true });
+    assert.equal(custom.status, "conflict");
+    assert.deepEqual(custom.changes, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("switching from Oxlint to ESLint removes the Oxlint adapter files", async () => {
+  const root = await createGreenfieldFixture();
+
+  try {
+    await write(
+      root,
+      ".agents/css-modules.json",
+      `${JSON.stringify(compactProfile({ lintEngine: "oxlint" }), null, 2)}\n`,
+    );
+    await applySetupPlan(await planSetup({ root, mode: "bootstrap" }));
+    await write(
+      root,
+      ".agents/css-modules.json",
+      `${JSON.stringify(compactProfile({ lintEngine: "eslint" }), null, 2)}\n`,
+    );
+
+    const plan = await planSetup({ root, mode: "migrate", authorizeMigrate: true });
+    assert.deepEqual(
+      plan.changes
+        .filter(({ action }) => action === "delete")
+        .map(({ path: filePath }) => filePath)
+        .sort(),
+      [
+        ".agents/css-modules-harness/harness/oxlint-plugin.mjs",
+        ".agents/css-modules-harness/scripts/check-oxlint.mjs",
+      ],
+    );
+    await writeFile(
+      path.join(root, ".agents/css-modules-harness/scripts/check-oxlint.mjs"),
+      "// edited\n",
+    );
+    await assert.rejects(applySetupPlan(plan), /Refusing to delete changed file/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

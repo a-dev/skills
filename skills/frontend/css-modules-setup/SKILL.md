@@ -149,7 +149,7 @@ Rules:
 - stop on incompatible drift unless `migrate` was explicitly selected;
 - report each touched file immediately if a later phase fails.
 
-When the selected profile enables `enforcement`, read `references/mechanical-enforcement.md`. ESLint is the default aggregate engine and does not install Oxlint. Set compact `lintEngine` to `oxlint` only for an explicit optional selection; setup then adds its adapter and dependency while retaining Stylelint and cross-file coverage.
+When the selected profile enables `enforcement`, read `references/mechanical-enforcement.md`. The TSX rules run on one lint engine, resolved as the explicit compact `lintEngine`, otherwise the linter the project already runs (Oxlint or ESLint config files and package scripts, then dependencies), otherwise ESLint. An Oxlint project gets `oxlint` and `oxc-parser` and no ESLint or Babel packages; an ESLint project gets `eslint`, `@babel/eslint-parser`, and `@babel/core`. Stylelint and the cross-file checks run with either engine.
 
 Use the files under `assets/templates/` as parameterized source material through `scripts/setup.mjs`. In `bootstrap`, pass the developer-reviewed values with `--inputs <json-path>`. An unresolved required input returns `needs-input`; it never becomes an empty class or invented visual value.
 
@@ -159,7 +159,7 @@ Complete when every planned change is applied, every unplanned conflict stops th
 
 ## Step 5: write the project contract
 
-Use the setup planner to copy the selected schema beside `.agents/css-modules.json` and create that authored file from the reviewed input. Compact profiles receive `css-modules.compact.schema.json`; legacy profiles receive `css-modules.schema.json`.
+Use the setup planner to copy the selected schema beside `.agents/css-modules.json` and create that authored file from the reviewed input. Compact profiles receive `css-modules.compact.schema.json`; legacy profiles receive `css-modules.schema.json`. A compact project does not keep the legacy schema copy: `align` reports a leftover one as a conflict, and `migrate` deletes it.
 
 The authored profile records decisions the daily skill cannot safely rediscover. All consumers use the same resolved in-memory profile. Executable configuration remains authoritative. Do not edit show-config output.
 
@@ -187,7 +187,7 @@ Run:
 4. `commands["css:verify"]`, or the bundled disposable reference fixture, when recorded;
 5. the read-only audit and setup dry-run again.
 
-Record `css:check` as the bundled `check.mjs --run-declarations` invocation from `references/mechanical-enforcement.md`, so declarations, CSS typing, ESLint, Stylelint, and cross-file contracts have one ordered entry point. Existing projects may record `enforcement.severity` as `warning` before promoting it to `error`. Do not run separate generation/typechecking commands after that aggregate unless a failure requires a focused reproduction.
+Record `css:check` as the bundled `check.mjs --run-declarations` invocation from `references/mechanical-enforcement.md`, so declarations, CSS typing, the selected TSX lint engine, Stylelint, and cross-file contracts have one ordered entry point. Existing projects may record `enforcement.severity` as `warning` before promoting it to `error`. Do not run separate generation/typechecking commands after that aggregate unless a failure requires a focused reproduction.
 
 Read `references/reference-fixture.md` when the selected project has no existing CSS-specific runtime fixture or when validating changes to this harness itself.
 
@@ -242,7 +242,7 @@ When project review identifies the first reusable style, add it in a scoped edit
 
 ### Advanced choices and migration
 
-Add `helpers`, `layers`, `sharedApi.modules`, `styles.entryPoint`, `styles.globalStylesheet`, `runtimeVerification`, `exceptions`, or `enforcement` only when the project needs them. An enabled `colors` object must name every palette/semantic file, theme owner, attribute, mode, and custom `modeMapping`; values are supplied through reviewed `--inputs` data. A custom `lintEngine: "oxlint"` is explicit and adds only the optional Oxlint adapter on top of CSS and cross-file coverage.
+Add `helpers`, `layers`, `sharedApi.modules`, `styles.entryPoint`, `styles.globalStylesheet`, `runtimeVerification`, `exceptions`, or `enforcement` only when the project needs them. An enabled `colors` object must name every palette/semantic file, theme owner, attribute, mode, and custom `modeMapping`; values are supplied through reviewed `--inputs` data. Set `lintEngine` only to override the discovered engine, for example `"oxlint"` in a project with no linter yet or in one that runs both linters.
 
 For an existing legacy profile, first inspect and review the migration candidate. Apply only this explicit command:
 
@@ -252,7 +252,7 @@ node <css-modules-setup-skill>/scripts/setup.mjs migrate \
   --format human --apply
 ```
 
-The planner compares legacy and compact resolved profiles before writing. It preserves topology, helper and barrel paths, module exports/classes, all color files and `modeMapping`, command overrides, documents, exceptions, and composition policy. A lossy field produces a field-specific blocker and no writes. `audit`, `align`, daily checks, and `show-config` never migrate.
+The planner compares legacy and compact resolved profiles before writing. It preserves topology, helper and barrel paths, module exports/classes, all color files and `modeMapping`, command overrides, documents, exceptions, and composition policy. A lossy field produces a field-specific blocker and no writes. The same migration deletes the now-unused `.agents/css-modules.schema.json`, and, after a switch from Oxlint to ESLint, the unused Oxlint adapter files; each deletion is shown in the plan and refused if the file changed after planning. `audit`, `align`, daily checks, and `show-config` never migrate.
 
 Read `references/resolved-contract.md` for the complete field map, provenance labels, exact-one-owner rule, and static evidence limits. Read `adapters/vite-react.md` for the narrow integration steps required to make aliases, declaration generation, and production builds executable.
 

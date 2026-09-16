@@ -281,11 +281,24 @@ function ambiguityFacts(input, discoveredFacts) {
   return ambiguities;
 }
 
+// An explicit choice wins; otherwise the harness follows the linter the project
+// already runs, so an Oxlint project never gains ESLint just for CSS checks.
+function resolveLintEngine(input, discoveredFacts, provenance) {
+  const discovered = discoveredFacts.lintEngine;
+  setProvenance(
+    provenance,
+    "lintEngine",
+    input.lintEngine ? "explicit" : discovered ? "discovered" : "preset",
+  );
+  return input.lintEngine ?? discovered ?? "eslint";
+}
+
 function resolveLegacy(input, discoveredFacts, provenance) {
   const profile = clone(input);
   // The schema pointer describes the authored file, not the project contract.
   // Keep it out of the normalized comparison so format migration is lossless.
   delete profile.$schema;
+  profile.lintEngine = resolveLintEngine(input, discoveredFacts, provenance);
   for (const field of [
     "methodologyVersion",
     "profileSchemaVersion",
@@ -304,7 +317,6 @@ function resolveLegacy(input, discoveredFacts, provenance) {
     "enforcement",
     "exceptions",
     "extensions",
-    "lintEngine",
   ]) {
     if (profile[field] !== undefined) setProvenance(provenance, field, "explicit");
   }
@@ -412,12 +424,12 @@ function resolveCompact(input, discoveredFacts, provenance) {
     ...(enforcement ? { enforcement } : {}),
     exceptions: clone(input.exceptions ?? []),
     ...(input.extensions ? { extensions: clone(input.extensions) } : {}),
+    lintEngine: resolveLintEngine(input, discoveredFacts, provenance),
   };
   setProvenance(provenance, "methodologyVersion", "preset");
   setProvenance(provenance, "profileSchemaVersion", "preset");
   setProvenance(provenance, "adapter", "preset");
   setProvenance(provenance, "exceptions", input.exceptions ? "explicit" : "preset");
-  setProvenance(provenance, "lintEngine", input.lintEngine ? "explicit" : "preset");
   return { profile, preset: presetName };
 }
 
@@ -451,6 +463,15 @@ export function sharedApiInterpretation(contractOrProfile) {
       .filter(Boolean),
     entryPoint: profile.sharedApi.entryPoint,
     modules: profile.sharedApi.modules,
+  };
+}
+
+// Settings for the css-modules/* TSX rules; both lint engines receive the same object.
+export function tsxRuleSettings(contractOrProfile) {
+  const profile = contractOrProfile.profile ?? contractOrProfile;
+  return {
+    ...sharedApiInterpretation(profile),
+    privateBooleanAttributes: profile.enforcement?.privateBooleanAttributes ?? ["data-loading"],
   };
 }
 
@@ -489,18 +510,73 @@ export function resolveContract(input, { discoveredFacts = {} } = {}) {
   };
 }
 
+const LINT_CONFIG_FILES = {
+  oxlint: [
+    ".oxlintrc.json",
+    ".oxlintrc.jsonc",
+    "oxlint.config.ts",
+    "oxlint.config.mts",
+    "oxlint.config.js",
+    "oxlint.config.mjs",
+  ],
+  eslint: [
+    "eslint.config.js",
+    "eslint.config.mjs",
+    "eslint.config.cjs",
+    "eslint.config.ts",
+    "eslint.config.mts",
+    "eslint.config.cts",
+    ".eslintrc",
+    ".eslintrc.js",
+    ".eslintrc.cjs",
+    ".eslintrc.json",
+    ".eslintrc.yaml",
+    ".eslintrc.yml",
+  ],
+};
+
+function singleEngine(engines) {
+  return engines.length === 1 ? engines[0] : undefined;
+}
+
+// Config files and scripts show which linter the project itself runs. A bare
+// dependency is weaker evidence: earlier harness versions installed ESLint
+// into Oxlint projects, so dependencies only decide when nothing else does.
+// Projects running both linters keep the ESLint default.
+async function discoverLintEngine(root, packageJson) {
+  const scripts = Object.values(packageJson?.scripts ?? {}).filter(
+    (command) => typeof command === "string" && !command.includes("css-modules-harness"),
+  );
+  const configured = [];
+  for (const [engine, files] of Object.entries(LINT_CONFIG_FILES)) {
+    const hasConfig = (await Promise.all(files.map((file) => exists(path.join(root, file))))).some(
+      Boolean,
+    );
+    const runsEngine = scripts.some((command) => new RegExp(`\\b${engine}\\b`).test(command));
+    if (hasConfig || runsEngine) configured.push(engine);
+  }
+  if (configured.length > 0) return singleEngine(configured);
+  const dependencies = {
+    ...packageJson?.dependencies,
+    ...packageJson?.devDependencies,
+  };
+  return singleEngine(Object.keys(LINT_CONFIG_FILES).filter((engine) => engine in dependencies));
+}
+
 export async function discoverProjectFacts(root) {
   const resolvedRoot = path.resolve(root);
   const packagePath = path.join(resolvedRoot, "package.json");
   let packageManager;
   let packageScripts = {};
   let packageImports;
+  let packageJson;
   if (await exists(packagePath)) {
-    const packageJson = await readJson(packagePath);
+    packageJson = await readJson(packagePath);
     packageManager = packageJson.packageManager?.split("@")[0];
     packageScripts = packageJson.scripts ?? {};
     packageImports = packageJson.imports;
   }
+  const lintEngine = await discoverLintEngine(resolvedRoot, packageJson);
   if (!packageManager) {
     const markers = [
       ["pnpm", "pnpm-lock.yaml"],
@@ -537,6 +613,7 @@ export async function discoverProjectFacts(root) {
   return {
     packageManager,
     packageScripts,
+    ...(lintEngine ? { lintEngine } : {}),
     ...(bareAlias
       ? { alias: { bare: bareAlias, ...(subpathAlias ? { subpath: subpathAlias } : {}) } }
       : {}),

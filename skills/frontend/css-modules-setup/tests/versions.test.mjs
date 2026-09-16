@@ -44,6 +44,7 @@ test("package, methodology, schema, adapter, and minimum versions share one cont
   assert.equal(runRecord.properties.schemaVersion.const, versions.evaluation.runRecordVersion);
   assert.equal(versions.adapters[profile.adapter.name].version, profile.adapter.version);
   assert.equal(packageJson.devDependencies.oxlint, versions.enforcement.oxlint);
+  assert.equal(packageJson.devDependencies["oxc-parser"], versions.enforcement["oxc-parser"]);
 
   for (const [dependency, minimum] of Object.entries(
     versions.adapters[profile.adapter.name].minimums,

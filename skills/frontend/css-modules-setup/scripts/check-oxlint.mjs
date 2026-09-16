@@ -16,7 +16,7 @@ import {
   resolveInside,
   selectSeverity,
 } from "./lib.mjs";
-import { readResolvedContract, sharedApiInterpretation } from "./contract.mjs";
+import { readResolvedContract, tsxRuleSettings } from "./contract.mjs";
 
 const CATEGORY_NAMES = [
   "correctness",
@@ -123,6 +123,43 @@ function normalizeDiagnostics(payload, root, severity) {
   });
 }
 
+// Runs the css-modules/* TSX rules through Oxlint and returns raw findings.
+// check.mjs calls this for lintEngine "oxlint", so it must not load ESLint.
+export async function runOxlint(root, profile, severity) {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "css-modules-oxlint-config-"));
+  const configPath = path.join(temporaryRoot, ".oxlintrc.json");
+  const pluginPath = fileURLToPath(new URL("../harness/oxlint-plugin.mjs", import.meta.url));
+  const config = {
+    categories: Object.fromEntries(CATEGORY_NAMES.map((name) => [name, "off"])),
+    plugins: [],
+    jsPlugins: [{ name: "css-modules", specifier: pathToFileURL(pluginPath).href }],
+    rules: Object.fromEntries(
+      oxlintRuleIds.map((id) => [`css-modules/${id}`, severity === "error" ? "error" : "warn"]),
+    ),
+    settings: { cssModules: tsxRuleSettings(profile) },
+  };
+
+  try {
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+    const target = resolveInside(root, profile.appRoot);
+    const execution = await runProcess(
+      process.execPath,
+      [oxlintBinary(root), "--config", configPath, "--format", "json", target],
+      root,
+    );
+    if (execution.signal || ![0, 1].includes(execution.code)) {
+      throw new Error(
+        execution.stderr.trim() ||
+          execution.stdout.trim() ||
+          `Oxlint exited with ${execution.signal ?? execution.code}`,
+      );
+    }
+    return normalizeDiagnostics(execution.stdout, root, severity);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+}
+
 export async function checkWithOxlint({
   root = process.cwd(),
   profilePath = ".agents/css-modules.json",
@@ -132,57 +169,13 @@ export async function checkWithOxlint({
   const contract = await readResolvedContract(resolvedRoot, profilePath);
   const profile = contract.profile;
   const selectedSeverity = selectSeverity(profile, severity);
-
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "css-modules-oxlint-config-"));
-  const configPath = path.join(temporaryRoot, ".oxlintrc.json");
-  const pluginPath = fileURLToPath(new URL("../harness/oxlint-plugin.mjs", import.meta.url));
-  const config = {
-    categories: Object.fromEntries(CATEGORY_NAMES.map((name) => [name, "off"])),
-    plugins: [],
-    jsPlugins: [{ name: "css-modules", specifier: pathToFileURL(pluginPath).href }],
-    rules: Object.fromEntries(
-      oxlintRuleIds.map((id) => [
-        `css-modules/${id}`,
-        selectedSeverity === "error" ? "error" : "warn",
-      ]),
-    ),
-    settings: {
-      cssModules: {
-        ...sharedApiInterpretation(profile),
-        privateBooleanAttributes: profile.enforcement?.privateBooleanAttributes ?? ["data-loading"],
-        sharedApiSources: [profile.alias.bare, profile.sharedApi.entryPoint],
-        sharedCssModuleExports: profile.sharedApi.modules
-          .map(({ export: exportName }) => exportName)
-          .filter(Boolean),
-      },
-    },
+  const rawFindings = await runOxlint(resolvedRoot, profile, selectedSeverity);
+  return {
+    root: resolvedRoot,
+    profilePath,
+    severity: selectedSeverity,
+    ...finalizeFindings(rawFindings, profile.exceptions ?? []),
   };
-
-  try {
-    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
-    const target = resolveInside(resolvedRoot, profile.appRoot);
-    const execution = await runProcess(
-      process.execPath,
-      [oxlintBinary(resolvedRoot), "--config", configPath, "--format", "json", target],
-      resolvedRoot,
-    );
-    if (execution.signal || ![0, 1].includes(execution.code)) {
-      throw new Error(
-        execution.stderr.trim() ||
-          execution.stdout.trim() ||
-          `Oxlint exited with ${execution.signal ?? execution.code}`,
-      );
-    }
-    const rawFindings = normalizeDiagnostics(execution.stdout, resolvedRoot, selectedSeverity);
-    return {
-      root: resolvedRoot,
-      profilePath,
-      severity: selectedSeverity,
-      ...finalizeFindings(rawFindings, profile.exceptions ?? []),
-    };
-  } finally {
-    await rm(temporaryRoot, { recursive: true, force: true });
-  }
 }
 
 export function exitCodeForOxlint(result) {

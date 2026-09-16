@@ -30,6 +30,7 @@
     "@vitejs/plugin-react": "6.0.3",
     "color-name": "2.1.0",
     "eslint": "10.7.0",
+    "oxc-parser": "0.150.0",
     "oxfmt": "0.59.0",
     "oxlint": "1.74.0",
     "postcss": "8.5.19",

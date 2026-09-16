@@ -10,7 +10,8 @@
     "runRecordVersion": 1
   },
   "enforcement": {
-    "oxlint": "1.74.0"
+    "oxlint": "1.74.0",
+    "oxc-parser": "0.150.0"
   },
   "adapters": {
     "vite-react": {

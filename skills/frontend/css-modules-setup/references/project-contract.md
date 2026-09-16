@@ -106,11 +106,11 @@ Color templates apply only when `colorTokens.enabled` is true. Palette values re
 
 When enforcement is enabled, `sharedApi.modules[].export` is a runtime CSS-module contract, not just a name in a barrel. The bundled checker follows direct default CSS-module re-exports, local imported bindings, and relative `export *` barrels. A proven wrong value, wrong module, or type-only export is a violation. External imports, namespace values, cycles, and unresolved expressions are reported as analysis uncertainty; no finding is treated as proof in those cases.
 
-ESLint is the default aggregate engine and does not install Oxlint. Compact `lintEngine: "oxlint"` is an explicit optional selection; it adds the Oxlint adapter and dependency while retaining Stylelint and cross-file coverage.
+The TSX rules run on one lint engine, resolved as the explicit compact `lintEngine`, otherwise the linter the project already runs (Oxlint or ESLint config files and package scripts, then dependencies), otherwise ESLint. An Oxlint project gets `oxlint` and `oxc-parser` and no ESLint or Babel packages; an ESLint project gets `eslint`, `@babel/eslint-parser`, and `@babel/core`. Stylelint and the cross-file checks run with either engine.
 
 ## Profile validation
 
-Copy the schema beside the project profile so editors and offline checks can resolve it.
+Copy the schema for the profile's format beside the project profile so editors can resolve it. The installed harness carries its own copy of the canonical legacy schema under `.agents/css-modules-harness/assets/`, so a compact project needs no `.agents/css-modules.schema.json`.
 
 The audit validates required shape without executing application code. Behavioral verification remains a separate explicit action.
 

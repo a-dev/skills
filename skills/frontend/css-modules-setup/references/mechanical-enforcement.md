@@ -14,26 +14,30 @@ node .agents/css-modules-harness/scripts/check.mjs \
 
 The command runs the recorded `css:generate` and `css:types` commands once, reports those generated declaration outputs separately from authored edits, and then:
 
-1. ESLint rules for TSX state, class lookup, and inline styles;
+1. the `css-modules/*` TSX rules for state, class lookup, and inline styles, on the resolved lint engine (ESLint or Oxlint);
 2. Stylelint rules for selectors, colors, layers, and `!important`;
 3. cross-file checks for semantic tokens, shared exports/public classes, layer-ownership ambiguity, and external `composes` paths.
 
 It never invokes `commands["css:check"]` recursively. It does not add generic application lint, test, build, or development commands to the CSS profile.
 
-ESLint is the default aggregate path. Setup bundles ESLint, Stylelint, and the cross-file checker without Oxlint. The optional Oxlint adapter is installed only for compact `lintEngine: "oxlint"`; it does not replace CSS or cross-file checking.
+## Lint engine
+
+The TSX rules run on one lint engine, resolved as the explicit compact `lintEngine`, otherwise the linter the project already runs (Oxlint or ESLint config files and package scripts, then dependencies), otherwise ESLint. An Oxlint project gets `oxlint` and `oxc-parser` and no ESLint or Babel packages; an ESLint project gets `eslint`, `@babel/eslint-parser`, and `@babel/core`. Stylelint and the cross-file checks run with either engine.
+
+`check.mjs` loads ESLint and its Babel parser only for the ESLint engine. With Oxlint it runs the rules through `check-oxlint.mjs` and uses `oxc-parser` for the shared-export analysis, so an Oxlint project never needs ESLint installed. A project that runs both linters stays on ESLint unless the profile sets `lintEngine`.
 
 ## Oxlint adapter
 
-For a faster TSX-only enforcement loop, run the bundled Oxlint adapter separately:
+With the Oxlint engine, the aggregate command already runs this adapter. For a faster TSX-only loop, run it on its own:
 
 ```sh
 node .agents/css-modules-harness/scripts/check-oxlint.mjs \
   --root .
 ```
 
-The adapter loads `harness/oxlint-plugin.mjs`, reads helper names, private boolean attributes, severity, and exceptions from the same project profile, and reports the same `css-modules/*` rule IDs as the ESLint adapter. It does not replace the aggregate `css:check` command because Stylelint and cross-file contract checks still cover different parts of the methodology.
+The adapter loads `harness/oxlint-plugin.mjs`, reads helper names, private boolean attributes, severity, and exceptions from the same project profile, and reports the same `css-modules/*` rule IDs as the ESLint adapter. On its own it covers only the TSX rules; `css:check` adds Stylelint and the cross-file contract checks.
 
-Oxlint JavaScript plugins are currently alpha. Install the exact Oxlint version recorded in the bundled `versions.json` and update it only through an explicit harness migration.
+Oxlint JavaScript plugins are currently alpha. Install the exact `oxlint` and `oxc-parser` versions recorded in the bundled `versions.json` and update them only through an explicit harness migration. Switching an installed project from Oxlint to ESLint is a `migrate` run; it removes the unused Oxlint adapter files.
 
 ## Migration severity
 
