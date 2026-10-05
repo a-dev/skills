@@ -1,0 +1,56 @@
+{
+  "flow": "css-modules",
+  "metrics": [
+    {
+      "id": "pass",
+      "label": "Pass",
+      "kind": "binary"
+    },
+    {
+      "id": "scope",
+      "label": "Scope",
+      "kind": "binary"
+    },
+    {
+      "id": "checks",
+      "label": "Checks",
+      "kind": "binary"
+    },
+    {
+      "id": "report",
+      "label": "Report",
+      "kind": "binary"
+    }
+  ],
+  "perf_fields": [
+    {
+      "id": "cost_usd",
+      "label": "Cost",
+      "unit": "$"
+    },
+    {
+      "id": "latency_s",
+      "label": "Latency",
+      "unit": "s"
+    },
+    {
+      "id": "num_turns",
+      "label": "Turns"
+    },
+    {
+      "id": "tool_calls",
+      "label": "Tool calls"
+    },
+    {
+      "id": "skill_used",
+      "label": "Skill used"
+    }
+  ],
+  "harness_paths": [
+    ".claude/hillclimb/css-modules/cases.json",
+    "evals/fixtures/model-task-blueprints.mjs",
+    "skills/frontend/css-modules-setup/scripts/prepare-eval-fixtures.mjs",
+    "skills/frontend/css-modules-setup/scripts/run-eval-fixtures.mjs"
+  ],
+  "harness_sha": "40fa699206e83ea8fb53c6175747c27bd1569386fe639b042d956feefcdc753f"
+}

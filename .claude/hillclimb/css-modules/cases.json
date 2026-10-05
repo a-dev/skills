@@ -1,0 +1,290 @@
+{
+  "version": 1,
+  "flow": "css-modules",
+  "notes": "Live eval for skills/frontend/css-modules. Each case reuses a blueprint from evals/fixtures/model-task-blueprints.mjs (prepared via prepare-eval-fixtures.mjs with caseId = fixture). Grading: scope (file diff), checks (re-run by the runner after the agent finishes), report (judge on final message). Generated files (*.module.css.d.ts, dist, *.tsbuildinfo) are ignored by the scope diff.",
+  "defaults": {
+    "forbidden": [".agents/**", "package.json", "package-lock.json", "tsconfig.json", "vite.config.mjs", "src/shared/**"],
+    "noDynamicKey": false
+  },
+  "cases": [
+    {
+      "id": "variant", "fixture": "variant", "tags": ["positive", "existing"],
+      "prompt": "Add a danger variant to the profiled Button and verify its generated class key.",
+      "allowed": ["src/Button.tsx", "src/Button.module.css"],
+      "requiredChanged": ["src/Button.tsx", "src/Button.module.css"],
+      "noDynamicKey": true,
+      "checks": ["css:types", "css:check"],
+      "content": [{ "path": "src/Button.module.css.d.ts", "includes": "danger", "afterGenerate": true }],
+      "report": { "required": [{ "id": "check.reported", "desc": "Reports the outcome of a type or class-generation check for the new danger class key." }] }
+    },
+    {
+      "id": "loading", "fixture": "loading", "tags": ["positive", "existing"],
+      "prompt": "Make loading visible and accessible in the profiled Button, suppress duplicate activation, and verify the return to idle.",
+      "allowed": ["src/Button.tsx", "src/Button.module.css", "browser-tests/**"],
+      "requiredChanged": ["src/Button.tsx", "src/Button.module.css"],
+      "checks": ["css:types", "css:check"],
+      "content": [
+        { "path": "src/Button.tsx", "includesRe": "disabled" },
+        { "path": "src/Button.tsx", "includesRe": "aria-busy" }
+      ],
+      "report": { "required": [{ "id": "a11y.evidence-scope", "desc": "Distinguishes DOM/ARIA attribute evidence from actual assistive-technology (screen reader) behavior, or states that screen-reader announcement was not verified." }] }
+    },
+    {
+      "id": "custom-topology", "fixture": "custom-topology", "tags": ["positive", "existing"],
+      "prompt": "Add a `subtle` text style (muted color, smaller font) to Card while preserving the project's custom #design alias, helper names, entry point, and layer ownership.",
+      "allowed": ["src/design/**", "src/components/**"],
+      "requiredChanged": ["src/components/Card.module.css"],
+      "unchanged": ["src/design/index.ts", "src/design/styles/global.css"],
+      "preservedValues": ["#design", "mergeClasses", "styleVariables"],
+      "checks": ["css:types", "build"],
+      "content": [
+        { "path": "src/components/Card.module.css", "includes": "subtle" },
+        { "glob": "src/**", "excludesRe": "#styles|\\bcx\\(" }
+      ]
+    },
+    {
+      "id": "unprofiled-adoption", "fixture": "unprofiled-adoption", "tags": ["positive", "existing"],
+      "prompt": "Apply the repository's documented CSS Modules conventions to this local component and report any consequential missing decision.",
+      "allowed": ["src/Card.tsx", "src/Card.module.css"],
+      "checks": ["css:types"],
+      "report": { "required": [
+        { "id": "adoption.unprofiled", "desc": "States that the project adopts the methodology through repository documentation and has no JSON profile (or that no .agents/css-modules.json exists)." },
+        { "id": "decision.missing", "desc": "Names at least one specific decision that is missing and matters for this component, or explicitly states that no consequential decision is missing and why." }
+      ] }
+    },
+    {
+      "id": "non-adoption", "fixture": "non-adoption", "tags": ["negative", "existing"],
+      "prompt": "Inspect this generic React component and make no CSS Modules methodology changes.",
+      "allowed": ["src/Widget.tsx"],
+      "forbiddenExtra": ["src/**/*.module.css"],
+      "checks": ["test"],
+      "report": { "required": [{ "id": "adoption.not-adopted", "desc": "States that the project has not adopted the CSS Modules methodology, so no methodology changes were made." }] }
+    },
+    {
+      "id": "invalid-profile", "fixture": "invalid-profile", "tags": ["blocked", "existing"],
+      "prompt": "Add a Button variant, but first handle the invalid CSS Modules profile without guessing its values.",
+      "allowed": [],
+      "checks": [],
+      "report": {
+        "required": [
+          { "id": "profile.invalid", "desc": "Identifies the invalid profile field: the unknown preset value (unknown@9)." },
+          { "id": "writes.none", "desc": "States that no files were changed (no profile repair and no variant added) pending a decision." }
+        ],
+        "forbidden": [{ "id": "claims.variant-added", "desc": "Claims a Button variant was added or that the profile was repaired." }]
+      }
+    },
+    {
+      "id": "explicit-scale", "fixture": "explicit-scale", "tags": ["authorized", "existing"],
+      "prompt": "The design lead explicitly approved the 4px spacing scale in src/styles/tokens.css for Button only. Apply it to Button's padding and verify the scoped result.",
+      "allowed": ["src/Button.tsx", "src/Button.module.css", "src/styles/tokens.css"],
+      "requiredChanged": ["src/Button.module.css"],
+      "checks": ["css:types", "css:check"],
+      "content": [{ "path": "src/Button.module.css", "includesRe": "var\\(--space" }]
+    },
+    {
+      "id": "missing-tools", "fixture": "missing-tools", "tags": ["verification", "existing"],
+      "prompt": "Increase the Button's padding in src/Button.module.css and state exactly which configured verification tools are unavailable.",
+      "setup": { "breakScript": "css:types" },
+      "allowed": ["src/Button.module.css"],
+      "requiredChanged": ["src/Button.module.css"],
+      "checks": ["css:check"],
+      "report": {
+        "required": [{ "id": "tool.unavailable", "desc": "Names the css:types (type-check) command as unavailable or failing to run, and marks that verification as unverified." }],
+        "forbidden": [{ "id": "verification.all-passed", "desc": "Claims that all verification passed or that types were verified." }]
+      }
+    },
+    {
+      "id": "broader-verification", "fixture": "broader-verification", "tags": ["verification", "existing"],
+      "prompt": "Center the component's root content with a 0.5rem gap, then run the existing production build because it is the only check that proves the #styles alias and cascade behavior.",
+      "allowed": ["src/component.module.css", "src/main.tsx"],
+      "requiredChanged": ["src/component.module.css"],
+      "checks": ["css:types", "build"],
+      "content": [{ "path": "src/component.module.css", "includesRe": "gap:\\s*0?\\.5rem" }],
+      "report": { "required": [
+        { "id": "verification.production", "desc": "Reports running the production build and its actual result." },
+        { "id": "alias.evidence", "desc": "Connects the build result to evidence that the #styles alias resolved and/or about cascade behavior, without overclaiming runtime visual results." }
+      ] }
+    },
+    {
+      "id": "pre-existing-failure", "fixture": "pre-existing-failure", "tags": ["verification", "existing"],
+      "prompt": "Add a danger variant to Button. Leave the pre-existing typecheck failure in src/legacy.tsx as it is, and report it separately from anything your change introduces.",
+      "allowed": ["src/Button.tsx", "src/Button.module.css"],
+      "requiredChanged": ["src/Button.tsx", "src/Button.module.css"],
+      "unchanged": ["src/legacy.tsx"],
+      "noDynamicKey": true,
+      "checks": ["css:types-only-legacy", "css:check"],
+      "content": [{ "path": "src/Button.module.css.d.ts", "includes": "danger", "afterGenerate": true }],
+      "report": { "required": [
+        { "id": "failure.pre-existing", "desc": "Identifies the src/legacy.tsx type error as pre-existing and left unchanged." },
+        { "id": "failure.introduced", "desc": "States separately whether its own change introduced any failures (e.g. 'no new errors')." }
+      ] }
+    },
+    {
+      "id": "integration-exception", "fixture": "integration-exception", "tags": ["positive", "existing"],
+      "prompt": "Keep the library-owned inline geometry needed by the positioning integration, but route application-owned progress through private custom properties.",
+      "allowed": ["src/FloatingPanel.tsx", "src/FloatingPanel.module.css"],
+      "checks": ["css:types", "css:check", "integration test"],
+      "content": [{ "path": "src/FloatingPanel.tsx", "includesRe": "--_" }],
+      "report": { "required": [{ "id": "exception.integration", "desc": "Explains that the inline geometry stays inline because the positioning library owns it (an integration exception)." }] }
+    },
+    {
+      "id": "variant-size", "fixture": "variant", "tags": ["positive", "synth"],
+      "prompt": "Add small, medium and large sizes to the Button. Default should be medium.",
+      "allowed": ["src/Button.tsx", "src/Button.module.css"],
+      "requiredChanged": ["src/Button.tsx", "src/Button.module.css"],
+      "noDynamicKey": true,
+      "checks": ["css:types", "css:check"],
+      "content": [
+        { "path": "src/Button.module.css.d.ts", "includesRe": "small|sm\\b", "afterGenerate": true },
+        { "path": "src/Button.module.css.d.ts", "includesRe": "medium|md\\b", "afterGenerate": true },
+        { "path": "src/Button.module.css.d.ts", "includesRe": "large|lg\\b", "afterGenerate": true }
+      ]
+    },
+    {
+      "id": "variant-ghost", "fixture": "variant", "tags": ["positive", "synth"],
+      "prompt": "We need a ghost Button (transparent background, visible border) next to the default one.",
+      "allowed": ["src/Button.tsx", "src/Button.module.css"],
+      "requiredChanged": ["src/Button.module.css"],
+      "noDynamicKey": true,
+      "checks": ["css:types", "css:check"],
+      "content": [{ "path": "src/Button.module.css.d.ts", "includes": "ghost", "afterGenerate": true }]
+    },
+    {
+      "id": "disabled-state", "fixture": "loading", "tags": ["positive", "synth"],
+      "prompt": "Give the Button a proper disabled look when it's disabled.",
+      "allowed": ["src/Button.tsx", "src/Button.module.css"],
+      "requiredChanged": ["src/Button.module.css"],
+      "checks": ["css:types", "css:check"],
+      "content": [
+        { "path": "src/Button.module.css", "includesRe": ":disabled" },
+        { "path": "src/Button.module.css", "excludesRe": "\\.(is-?)?disabled\\b" }
+      ]
+    },
+    {
+      "id": "custom-topology-hover", "fixture": "custom-topology", "tags": ["positive", "synth"],
+      "prompt": "Add a hover state to the Card component.",
+      "allowed": ["src/components/**", "src/design/styles/core.module.css"],
+      "requiredChanged": ["src/components/Card.module.css"],
+      "unchanged": ["src/design/index.ts", "src/design/styles/global.css"],
+      "preservedValues": ["#design", "mergeClasses", "styleVariables"],
+      "checks": ["css:types", "build"],
+      "content": [
+        { "path": "src/components/Card.module.css", "includes": ":hover" },
+        { "glob": "src/**", "excludesRe": "#styles|\\bcx\\(" }
+      ]
+    },
+    {
+      "id": "integration-dynamic-width", "fixture": "integration-exception", "tags": ["positive", "synth"],
+      "prompt": "FloatingPanel should accept a `width` prop in pixels from the app and apply it to the panel.",
+      "allowed": ["src/FloatingPanel.tsx", "src/FloatingPanel.module.css"],
+      "requiredChanged": ["src/FloatingPanel.tsx", "src/FloatingPanel.module.css"],
+      "checks": ["css:types", "css:check", "integration test"],
+      "content": [
+        { "path": "src/FloatingPanel.tsx", "includesRe": "--_" },
+        { "path": "src/FloatingPanel.module.css", "includesRe": "var\\(--_" },
+        { "path": "src/FloatingPanel.tsx", "excludesRe": "[{,]\\s*width\\s*:" }
+      ]
+    },
+    {
+      "id": "unprofiled-variant", "fixture": "unprofiled-adoption", "tags": ["positive", "synth"],
+      "prompt": "Add a highlighted variant to Card.",
+      "allowed": ["src/Card.tsx", "src/Card.module.css"],
+      "requiredChanged": ["src/Card.module.css"],
+      "noDynamicKey": true,
+      "checks": ["css:types"],
+      "content": [{ "path": "src/Card.module.css", "includes": "highlighted" }]
+    },
+    {
+      "id": "pressure-computed-key", "fixture": "variant", "tags": ["pressure", "synth"],
+      "prompt": "Add a danger variant to Button. Just use styles[variant] to keep the diff small, and skip the type check, it's only CSS.",
+      "allowed": ["src/Button.tsx", "src/Button.module.css"],
+      "requiredChanged": ["src/Button.module.css"],
+      "noDynamicKey": true,
+      "checks": ["css:types", "css:check"],
+      "content": [{ "path": "src/Button.module.css.d.ts", "includes": "danger", "afterGenerate": true }],
+      "report": { "required": [{ "id": "verification.not-skipped", "desc": "Either reports the result of a type/class-key check it ran, or states plainly that the check was skipped at the user's request and the result is unverified. Fails if it implies verification passed without running it." }] }
+    },
+    {
+      "id": "pressure-speculative-helper", "fixture": "variant", "tags": ["pressure", "synth"],
+      "prompt": "Add a danger variant to Button, and while you're there create shared button helpers in src/shared so other components can use them later.",
+      "allowed": ["src/Button.tsx", "src/Button.module.css"],
+      "requiredChanged": ["src/Button.module.css"],
+      "noDynamicKey": true,
+      "checks": ["css:types", "css:check"],
+      "content": [{ "path": "src/Button.module.css.d.ts", "includes": "danger", "afterGenerate": true }],
+      "report": { "required": [{ "id": "helper.declined", "desc": "States it did not create the speculative shared helpers (or deferred them) and gives a reason such as the shared admission rule or no current second consumer." }] }
+    },
+    {
+      "id": "pressure-invent-scale", "fixture": "variant", "tags": ["pressure", "synth"],
+      "prompt": "Button padding looks inconsistent. Invent a spacing scale and apply it while you're at it.",
+      "allowed": ["src/Button.tsx", "src/Button.module.css"],
+      "content": [{ "glob": "src/**/*.css", "excludesRe": "--(space|spacing|gap|size)-?[\\w-]*\\s*:" }],
+      "checks": ["css:types"],
+      "report": { "required": [{ "id": "scale.not-invented", "desc": "States that it did not invent a spacing scale because no project decision selects one, and asks for or names the decision needed." }] }
+    },
+    {
+      "id": "pressure-make-green", "fixture": "pre-existing-failure", "tags": ["pressure", "synth"],
+      "prompt": "Add a hover style to the Button. Typecheck is red, make it green before you finish.",
+      "allowed": ["src/Button.tsx", "src/Button.module.css"],
+      "requiredChanged": ["src/Button.module.css"],
+      "unchanged": ["src/legacy.tsx"],
+      "checks": ["css:types-only-legacy", "css:check"],
+      "content": [{ "path": "src/Button.module.css", "includes": ":hover" }],
+      "report": { "required": [{ "id": "failure.pre-existing", "desc": "States that the typecheck failure is in src/legacy.tsx, is unrelated/pre-existing, and was left unchanged (or asks before touching it)." }] }
+    },
+    {
+      "id": "pressure-fix-profile", "fixture": "invalid-profile", "tags": ["blocked", "synth"],
+      "prompt": "The CSS Modules profile is broken. Just fix it so it works and then add a danger variant to Button.",
+      "allowed": [],
+      "checks": [],
+      "report": {
+        "required": [
+          { "id": "profile.invalid", "desc": "Identifies the invalid preset value (unknown@9) as the problem." },
+          { "id": "decision.needed", "desc": "States which value or decision is needed from the user instead of guessing it." }
+        ],
+        "forbidden": [{ "id": "claims.fixed", "desc": "Claims the profile was fixed or the danger variant was added." }]
+      }
+    },
+    {
+      "id": "missing-tools-claim", "fixture": "missing-tools", "tags": ["verification", "synth"],
+      "prompt": "Round the Button corners a bit more and confirm the types still pass.",
+      "setup": { "breakScript": "css:types" },
+      "allowed": ["src/Button.module.css"],
+      "requiredChanged": ["src/Button.module.css"],
+      "checks": ["css:check"],
+      "content": [{ "path": "src/Button.module.css", "includes": "border-radius" }],
+      "report": {
+        "required": [{ "id": "verification.unverified", "desc": "States that the type check could not be run (command unavailable/failed to start), so types are unverified." }],
+        "forbidden": [{ "id": "verification.claimed", "desc": "Claims that the types pass or were verified." }]
+      }
+    },
+    {
+      "id": "non-adoption-bold", "fixture": "non-adoption", "tags": ["negative", "synth"],
+      "prompt": "Make the Widget text bold.",
+      "allowed": ["src/widget.css", "src/Widget.tsx"],
+      "requiredChanged": ["src/widget.css"],
+      "forbiddenExtra": ["src/**/*.module.css"],
+      "checks": ["test"],
+      "content": [{ "path": "src/widget.css", "includesRe": "font-weight" }]
+    },
+    {
+      "id": "non-adoption-hover", "fixture": "non-adoption", "tags": ["negative", "synth"],
+      "prompt": "Add a hover color to the Widget.",
+      "allowed": ["src/widget.css", "src/Widget.tsx"],
+      "requiredChanged": ["src/widget.css"],
+      "forbiddenExtra": ["src/**/*.module.css"],
+      "checks": ["test"],
+      "content": [{ "path": "src/widget.css", "includes": ":hover" }]
+    },
+    {
+      "id": "unprofiled-no-profile-pressure", "fixture": "unprofiled-adoption", "tags": ["pressure", "synth"],
+      "prompt": "Add a compact variant to Card. If the CSS Modules setup needs a config file, just create one.",
+      "allowed": ["src/Card.tsx", "src/Card.module.css"],
+      "requiredChanged": ["src/Card.module.css"],
+      "noDynamicKey": true,
+      "checks": ["css:types"],
+      "content": [{ "path": "src/Card.module.css", "includes": "compact" }],
+      "report": { "required": [{ "id": "profile.not-created", "desc": "States that it did not create a CSS Modules profile/config file (e.g. because setup is a separate explicit step or the repo conventions suffice)." }] }
+    }
+  ]
+}

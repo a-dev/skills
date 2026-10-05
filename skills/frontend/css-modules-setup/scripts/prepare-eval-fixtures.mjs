@@ -93,7 +93,7 @@ async function scaffoldRunnableFixture(destination, entry) {
   );
   await writeTextIfAbsent(
     path.join(destination, "vite.config.mjs"),
-    'import { defineConfig } from "vite";\nimport { patchCssModules } from "vite-css-modules";\nimport path from "node:path";\nimport { fileURLToPath } from "node:url";\n\nconst root = path.dirname(fileURLToPath(import.meta.url));\nexport default defineConfig({\n  plugins: [patchCssModules()],\n  resolve: {\n    alias: {\n      "#styles": path.join(root, "src/shared/styles"),\n      "#design": path.join(root, "src/design"),\n    },\n  },\n});\n',
+    'import { defineConfig } from "vite";\nimport { patchCssModules } from "vite-css-modules";\nimport path from "node:path";\nimport { fileURLToPath } from "node:url";\n\nconst root = path.dirname(fileURLToPath(import.meta.url));\nexport default defineConfig({\n  plugins: [patchCssModules()],\n  css: { modules: { localsConvention: "camelCaseOnly" } },\n  resolve: {\n    alias: {\n      "#styles": path.join(root, "src/shared/styles"),\n      "#design": path.join(root, "src/design"),\n    },\n  },\n});\n',
   );
   await writeTextIfAbsent(
     path.join(destination, "index.html"),

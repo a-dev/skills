@@ -82,7 +82,7 @@ Legacy and compact profiles resolve to one generated in-memory contract. Executa
 | Project policy       | Choices the repository must record or clearly document | aliases and helpers; shared admission; composition; layer order/ownership; colors; spacing and sizing; local fallback                          |
 | Adapter detail       | How the selected stack makes the policy executable     | Vite alias and `patchCssModules`; generated declaration command; package scripts; host-specific lint integration                               |
 
-Examples do not establish project policy. Do not invent a spacing, sizing, typography, or shape scale unless the user or project policy explicitly selects it.
+Examples do not establish project policy. Do not invent a spacing, sizing, typography, or shape scale unless the user or project policy explicitly selects it. A request to "invent" or "pick" a scale is not a selection: propose one in the report and do not write tokens. When a requested variant needs values the project has not recorded, use local literal values in the component module rather than new tokens or empty classes, and list them in the report as unreviewed choices.
 
 ## Classify before editing
 
@@ -111,17 +111,18 @@ Use the profile's layer order and ownership. Do not hardcode reference names or 
 2. Classify. Decide whether each new class is local or admitted shared API, and choose the state/variant/runtime route before writing.
 3. Edit. Make the smallest scoped change. Preserve caller classes, generated key names, and project-owned values.
 4. Check. A class-key or shared/layer change warrants declaration/type/contract checks. A state or theme change warrants the applicable browser/component runtime case. A comment-only edit needs the narrowest relevant check. Use the nearest existing build, preview, component test, or package/type command when it provides the needed evidence; do not change application configuration merely to create a check.
-5. Report. Separate authored edits, generated outputs, command results, DOM state, accessibility behavior, visual output, pre-existing failures, and unavailable evidence. DOM ARIA attributes do not prove that a screen reader announced anything.
+5. Report. Separate authored edits, generated outputs, command results, DOM state, accessibility behavior, visual output, pre-existing failures, and unavailable evidence. When a check fails, state separately whether your change introduced any new failure. DOM ARIA attributes do not prove that a screen reader announced anything.
 
-Run the profile's applicable `css:generate`, `css:types`, `css:check`, and `css:verify` commands. Report a missing recorded command as unverified. Never claim runtime behavior from static checks alone.
+Run the profile's applicable `css:generate`, `css:types`, `css:check`, and `css:verify` commands. Report a missing recorded command as unverified. If the user asks to skip a check, skip it and report that result as unverified; never describe a skipped check as passed. Never claim runtime behavior from static checks alone.
 
 ## Source rules
 
 - Use one co-located `*.module.css` per component boundary and short role names such as `root`, `icon`, `label`, and `action`.
 - With `camelCaseOnly`, consume kebab-case classes as camelCase. Literal bracket access is equivalent to dot access; dynamic string construction is prohibited. An exhaustive typed lookup map is the supported closed-variant form.
+- Author local class names in kebab-case (`.variant-ghost`, never `.variantGhost`) and consume them as camelCase in TS/JS (`styles.variantGhost`). After adding or renaming a class, run the declaration command and confirm the generated key. If it stays kebab-case, `camelCaseOnly` is missing from the executable configuration: report that drift and do not rename the CSS class or switch to bracket access to work around it.
 - Every authored styled element owns a class. Relationship selectors between owned classes, pseudo-elements, and narrow injected-content exceptions are documented in `references/edge-cases.md`.
 - Component modules consume semantic roles only when the profile enables the color contract. `currentColor`, `transparent`, and appropriate CSS system colors remain valid exceptions.
-- Application-owned runtime values use the configured custom-property helper with private `--_` names. Library-owned geometry may remain inline only at the documented integration boundary.
+- Application-owned runtime values use the configured custom-property helper with private `--_` names. If the configured helper does not exist, do not add it to the shared API, because setup owns that. Set the property locally with a typed style object (`` style={{ "--_width": `${width}px` } as CSSProperties} ``) and report the missing helper. Library-owned geometry may remain inline only at the documented integration boundary.
 - Follow the profile's `markup`, `composes`, or `mixed-with-rule` composition policy and the exact shared admission rule.
 
 ## Completion
